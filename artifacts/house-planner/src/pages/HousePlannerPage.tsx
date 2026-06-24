@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, lazy, Suspense } from "react";
 import { generateLayout } from "@/lib/layoutEngine";
 import type { LayoutInput, LayoutOutput } from "@/lib/layoutEngine";
+import { build3dScene } from "@/lib/geometryEngine3d";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,9 +15,11 @@ import {
 import {
   Ruler, Grid3X3, RefreshCw, ChevronRight, Building2,
   BedDouble, Bath, Car, Layers, Compass, AlertTriangle,
-  CheckCircle2, Info, Home,
+  CheckCircle2, Info, Home, Box,
 } from "lucide-react";
 import FloorPlanCanvas from "@/components/FloorPlanCanvas";
+
+const ThreeViewer = lazy(() => import("@/components/ThreeViewer"));
 
 const ROOM_COLORS: Record<string, string> = {
   living: "#dbeafe", dining: "#dcfce7", kitchen: "#fef9c3",
@@ -40,6 +43,8 @@ const DEFAULT_INPUT: LayoutInput = {
   hasBalcony: true, hasParking: true, hasStaircase: true, vastuCompliant: true,
 };
 
+type ViewMode = "2d" | "3d";
+
 export default function HousePlannerPage() {
   const [input, setInput]               = useState<LayoutInput>(DEFAULT_INPUT);
   const [result, setResult]             = useState<{ success: true; output: LayoutOutput } | null>(null);
@@ -47,6 +52,7 @@ export default function HousePlannerPage() {
   const [activeFloor, setActiveFloor]   = useState(0);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [viewMode, setViewMode]         = useState<ViewMode>("2d");
 
   const generate = useCallback(() => {
     const out = generateLayout(input);
@@ -61,6 +67,11 @@ export default function HousePlannerPage() {
     }
     setHasGenerated(true);
   }, [input]);
+
+  const scene3d = useMemo(() => {
+    if (!result) return null;
+    return build3dScene(result.output, input);
+  }, [result, input]);
 
   const selectedRoom = result?.output.rooms.find(r => r.id === selectedRoomId) ?? null;
   const floorTabs    = Array.from({ length: input.floors }, (_, i) => i);
@@ -236,26 +247,64 @@ export default function HousePlannerPage() {
 
         {/* ── Main canvas ─────────────────────────────────────────────────── */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Floor tabs */}
+
+          {/* Toolbar bar: 2D/3D toggle + floor tabs */}
           {result && (
-            <div className="flex items-center gap-1 px-4 pt-3 shrink-0"
+            <div className="flex items-center gap-0 px-4 shrink-0"
               style={{ borderBottom: "1px solid #2a3820", background: "#131d0b" }}>
-              {floorTabs.map(i => (
-                <button key={i} onClick={() => setActiveFloor(i)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-t border-b-2 transition-colors`}
-                  style={{
-                    borderBottomColor: activeFloor === i ? "#c1672a" : "transparent",
-                    color: activeFloor === i ? "#c1672a" : "#7a8a60",
-                    background: activeFloor === i ? "rgba(193,103,42,0.08)" : "transparent",
-                  }}>
-                  {floorLabel(i)}
-                </button>
-              ))}
+
+              {/* 2D / 3D toggle */}
+              <div className="flex items-center mr-3 pt-2 pb-1 gap-1">
+                {(["2d", "3d"] as ViewMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all"
+                    style={{
+                      background: viewMode === mode ? "rgba(193,103,42,0.18)" : "transparent",
+                      color: viewMode === mode ? "#c1672a" : "#6a7850",
+                      border: viewMode === mode ? "1px solid rgba(193,103,42,0.35)" : "1px solid transparent",
+                    }}
+                  >
+                    {mode === "2d"
+                      ? <><Grid3X3 className="w-3 h-3" /> 2D Plan</>
+                      : <><Box className="w-3 h-3" /> 3D View</>}
+                  </button>
+                ))}
+              </div>
+
+              {/* Floor tabs – only shown in 2D mode */}
+              {viewMode === "2d" && (
+                <div className="flex items-center gap-1 pt-0.5">
+                  <div className="w-px h-5 mx-2" style={{ background: "#2a3820" }} />
+                  {floorTabs.map(i => (
+                    <button key={i} onClick={() => setActiveFloor(i)}
+                      className="px-3 py-1.5 text-xs font-medium rounded-t border-b-2 transition-colors"
+                      style={{
+                        borderBottomColor: activeFloor === i ? "#c1672a" : "transparent",
+                        color: activeFloor === i ? "#c1672a" : "#7a8a60",
+                        background: activeFloor === i ? "rgba(193,103,42,0.08)" : "transparent",
+                      }}>
+                      {floorLabel(i)}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Mesh count pill – only in 3D mode */}
+              {viewMode === "3d" && scene3d && (
+                <div className="ml-auto pr-2 text-xs" style={{ color: "#6a7850" }}>
+                  {scene3d.meshes.length} geometry meshes
+                </div>
+              )}
             </div>
           )}
 
-          <div className="flex-1 overflow-auto p-6 flex items-start justify-center"
-            style={{ background: "#0f1a08" }}>
+          {/* Canvas area */}
+          <div
+            className="flex-1 overflow-auto flex items-start justify-center"
+            style={{ background: "#0f1a08" }}
+          >
             {!hasGenerated ? (
               <div className="flex flex-col items-center justify-center text-center mt-20 max-w-sm">
                 <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
@@ -264,8 +313,9 @@ export default function HousePlannerPage() {
                 </div>
                 <h2 className="text-xl font-semibold mb-2" style={{ color: "#e8dfc0" }}>Ready to Plan</h2>
                 <p className="text-sm mb-6" style={{ color: "#6a7850" }}>
-                  Configure your plot on the left, then generate a premium floor plan with
-                  architectural details, furniture, and Vastu-aware room placement.
+                  Configure your plot on the left, then generate a full architectural model —
+                  2D floor plans with furniture, and a complete 3D geometry with walls,
+                  slabs, columns, stairs, and openings.
                 </p>
                 <Button onClick={generate} className="gap-2"
                   style={{ background: "#c1672a", color: "#fff0e0", border: "none" }}>
@@ -287,16 +337,28 @@ export default function HousePlannerPage() {
                   ))}
                 </ul>
               </div>
-            ) : result ? (
-              <FloorPlanCanvas
-                output={result.output}
-                floor={activeFloor}
-                plotWidth={input.plotWidth}
-                plotDepth={input.plotDepth}
-                facing={input.facingDirection}
-                selectedRoomId={selectedRoomId}
-                onSelectRoom={setSelectedRoomId}
-              />
+            ) : result && viewMode === "2d" ? (
+              <div className="p-6 w-full h-full flex items-start justify-center">
+                <FloorPlanCanvas
+                  output={result.output}
+                  floor={activeFloor}
+                  plotWidth={input.plotWidth}
+                  plotDepth={input.plotDepth}
+                  facing={input.facingDirection}
+                  selectedRoomId={selectedRoomId}
+                  onSelectRoom={setSelectedRoomId}
+                />
+              </div>
+            ) : result && viewMode === "3d" && scene3d ? (
+              <div className="w-full h-full" style={{ minHeight: "500px" }}>
+                <Suspense fallback={
+                  <div className="flex items-center justify-center h-full text-sm" style={{ color: "#6a7850" }}>
+                    Loading 3D engine…
+                  </div>
+                }>
+                  <ThreeViewer scene={scene3d} />
+                </Suspense>
+              </div>
             ) : null}
           </div>
         </main>
@@ -319,6 +381,7 @@ export default function HousePlannerPage() {
                       ["Total Rooms",   `${result.output.rooms.length}`],
                       ["Doors",         `${result.output.doors.length}`],
                       ["Windows",       `${result.output.windows.length}`],
+                      ...(scene3d ? [["3D Meshes", `${scene3d.meshes.length}`]] : []),
                     ].map(([k, v]) => (
                       <div key={k} className="flex justify-between text-sm">
                         <span style={{ color: "#7a8a60" }}>{k}</span>
@@ -343,14 +406,14 @@ export default function HousePlannerPage() {
                 <div>
                   <h3 className="text-xs font-semibold uppercase tracking-wide mb-2"
                     style={{ color: "#90b060" }}>
-                    {floorLabel(activeFloor)} Rooms
+                    {viewMode === "3d" ? "All Rooms" : `${floorLabel(activeFloor)} Rooms`}
                   </h3>
                   <div className="space-y-0.5">
                     {result.output.rooms
-                      .filter(r => r.floor === activeFloor)
+                      .filter(r => viewMode === "3d" || r.floor === activeFloor)
                       .map(room => (
                         <button key={room.id}
-                          onClick={() => setSelectedRoomId(selectedRoomId === room.id ? null : room.id)}
+                          onClick={() => { setSelectedRoomId(selectedRoomId === room.id ? null : room.id); }}
                           className="w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 transition-colors"
                           style={{
                             background: selectedRoomId === room.id ? "rgba(193,103,42,0.20)" : "transparent",
@@ -359,6 +422,9 @@ export default function HousePlannerPage() {
                           <div className="w-2.5 h-2.5 rounded-sm shrink-0"
                             style={{ background: ROOM_COLORS[room.type] ?? "#f1f5f9", border: "1px solid #60704a" }} />
                           <span className="flex-1 font-medium">{room.name}</span>
+                          {viewMode === "3d" && (
+                            <span className="text-[9px]" style={{ color: "#506038" }}>F{room.floor}</span>
+                          )}
                           <span style={{ color: "#6a7850" }}>{room.area.toFixed(1)}m²</span>
                         </button>
                       ))}
