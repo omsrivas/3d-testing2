@@ -587,6 +587,8 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           style={{ background: "#E8EEF4" }}
           resize={{ debounce: 0, scroll: false }}
         >
+          {/* Set WebGL clear colour — CSS style prop does NOT reach the renderer */}
+          <color attach="background" args={["#E8EEF4"]} />
           <fog attach="fog" args={["#E8EEF4", scene.diagonal * 4, scene.diagonal * 10]} />
           <Suspense fallback={null}>
             <BuildingScene
