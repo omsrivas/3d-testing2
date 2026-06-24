@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "AI House Planner"
+version = "1.0.0"
+id = "artifacts/house-planner"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19914
+
+[services.development]
+run = "pnpm --filter @workspace/house-planner run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/house-planner", "run", "build" ]
+publicDir = "artifacts/house-planner/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19914"
+BASE_PATH = "/"
