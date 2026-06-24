@@ -146,7 +146,7 @@ export const useHouseStore = create<HouseState & HouseActions>()(
           set((state) => {
             if (!state.project) return;
             state.project.floors = state.project.floors.filter(
-              (f) => f.id !== floorId
+              (f: Floor) => f.id !== floorId
             );
             if (state.activeFloorId === floorId) {
               state.activeFloorId = state.project.floors[0]?.id ?? null;
@@ -161,7 +161,7 @@ export const useHouseStore = create<HouseState & HouseActions>()(
             if (!state.project || !state.activeFloorId) return;
             state.project.rooms[id] = { ...room, id };
             const floor = state.project.floors.find(
-              (f) => f.id === state.activeFloorId
+              (f: Floor) => f.id === state.activeFloorId
             );
             if (floor) floor.roomIds.push(id);
             state.project.updatedAt = new Date().toISOString();
@@ -181,8 +181,8 @@ export const useHouseStore = create<HouseState & HouseActions>()(
           set((state) => {
             if (!state.project) return;
             delete state.project.rooms[roomId];
-            state.project.floors.forEach((f) => {
-              f.roomIds = f.roomIds.filter((id) => id !== roomId);
+            state.project.floors.forEach((f: Floor) => {
+              f.roomIds = f.roomIds.filter((id: string) => id !== roomId);
             });
             state.project.updatedAt = new Date().toISOString();
           });
@@ -202,7 +202,7 @@ export const useHouseStore = create<HouseState & HouseActions>()(
             if (!state.project || !state.activeFloorId) return;
             state.project.walls[id] = { ...wall, id };
             const floor = state.project.floors.find(
-              (f) => f.id === state.activeFloorId
+              (f: Floor) => f.id === state.activeFloorId
             );
             if (floor) floor.wallIds.push(id);
             state.project.updatedAt = new Date().toISOString();
@@ -222,8 +222,8 @@ export const useHouseStore = create<HouseState & HouseActions>()(
           set((state) => {
             if (!state.project) return;
             delete state.project.walls[wallId];
-            state.project.floors.forEach((f) => {
-              f.wallIds = f.wallIds.filter((id) => id !== wallId);
+            state.project.floors.forEach((f: Floor) => {
+              f.wallIds = f.wallIds.filter((id: string) => id !== wallId);
             });
             state.project.updatedAt = new Date().toISOString();
           });
@@ -265,7 +265,7 @@ export const useHouseStore = create<HouseState & HouseActions>()(
               const wall = state.project.walls[opening.wallId];
               if (wall) {
                 wall.openingIds = wall.openingIds.filter(
-                  (id) => id !== openingId
+                  (id: string) => id !== openingId
                 );
               }
             }
