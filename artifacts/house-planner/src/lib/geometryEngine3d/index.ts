@@ -7,7 +7,7 @@ import { buildStairs3d } from "./stairBuilder3d";
 import { buildDoorFrames, buildWindowFrames } from "./openingBuilder3d";
 import { buildParapets } from "./parapetBuilder3d";
 import { buildBalconies } from "./balconyBuilder3d";
-import { FLOOR_TO_FLOOR, SLAB_T, PARAPET_H } from "./constants";
+import { FLOOR_TO_FLOOR, PARAPET_H } from "./constants";
 
 export type { BoxSpec, SceneData, MeshRole } from "./types";
 
@@ -58,10 +58,11 @@ export function build3dScene(
 
   return {
     meshes,
-    floors:     input.floors,
-    plotWidth:  input.plotWidth,
-    plotDepth:  input.plotDepth,
-    center:     [cx, totalH / 2, cz],
-    diagonal:   diag,
+    rooms:     output.rooms,
+    floors:    input.floors,
+    plotWidth: input.plotWidth,
+    plotDepth: input.plotDepth,
+    center:    [cx, totalH / 2, cz],
+    diagonal:  diag,
   };
 }

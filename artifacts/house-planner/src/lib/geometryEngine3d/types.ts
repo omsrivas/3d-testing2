@@ -1,3 +1,5 @@
+import type { Room } from "@/lib/layoutEngine";
+
 // ─── Mesh roles ───────────────────────────────────────────────────────────────
 export type MeshRole =
   | "exterior-wall"
@@ -47,6 +49,7 @@ export interface BoxSpec {
 // ─── Scene data returned by the engine ────────────────────────────────────────
 export interface SceneData {
   meshes: BoxSpec[];
+  rooms: Room[];
   floors: number;
   plotWidth: number;
   plotDepth: number;

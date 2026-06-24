@@ -6,6 +6,7 @@ import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { SceneData, BoxSpec, MeshRole } from "@/lib/geometryEngine3d";
 import { FLOOR_TO_FLOOR } from "@/lib/geometryEngine3d/constants";
+import { FloorFurniture, PlotLandscape } from "@/lib/furniture";
 
 // ─── Material palette ─────────────────────────────────────────────────────────
 const ROLE_COLOR: Record<MeshRole, string> = {
@@ -77,7 +78,7 @@ function presetCamera(
   }
 }
 
-// ─── Single mesh ─────────────────────────────────────────────────────────────
+// ─── Single structural mesh ───────────────────────────────────────────────────
 function SceneMesh({
   spec,
   wireframe,
@@ -87,10 +88,10 @@ function SceneMesh({
   wireframe: boolean;
   dimOpacity?: number;
 }) {
-  const base   = ROLE_OPACITY[spec.role] ?? 1;
+  const base    = ROLE_OPACITY[spec.role] ?? 1;
   const opacity = dimOpacity !== undefined ? base * dimOpacity : base;
-  const rough  = ROLE_ROUGHNESS[spec.role] ?? 0.75;
-  const transp = opacity < 0.99;
+  const rough   = ROLE_ROUGHNESS[spec.role] ?? 0.75;
+  const transp  = opacity < 0.99;
 
   return (
     <mesh
@@ -113,7 +114,6 @@ function SceneMesh({
 }
 
 // ─── Camera controller ────────────────────────────────────────────────────────
-// Drives animated transitions between presets while keeping OrbitControls active.
 function CameraController({
   preset,
   scene,
@@ -133,7 +133,6 @@ function CameraController({
     t: number;
   } | null>(null);
 
-  // Kick off animation whenever preset / isoFloor changes
   useEffect(() => {
     const { pos, target } = presetCamera(preset, scene, isoFloor);
     animRef.current = {
@@ -175,20 +174,21 @@ function CameraController({
 }
 
 // ─── Floor groups with animated explode offset ────────────────────────────────
-const EXPLODE_GAP = FLOOR_TO_FLOOR * 1.6; // extra separation per floor in exploded view
+const EXPLODE_GAP = FLOOR_TO_FLOOR * 1.6;
 
 function FloorGroups({
   scene,
   preset,
   isoFloor,
   wireframe,
+  showFurniture,
 }: {
   scene: SceneData;
   preset: ViewPreset;
   isoFloor: number;
   wireframe: boolean;
+  showFurniture: boolean;
 }) {
-  // Group meshes by floor
   const byFloor = useMemo<Map<number, BoxSpec[]>>(() => {
     const m = new Map<number, BoxSpec[]>();
     for (const spec of scene.meshes) {
@@ -198,7 +198,6 @@ function FloorGroups({
     return m;
   }, [scene.meshes]);
 
-  // Refs for per-floor Group objects (for direct Y animation)
   const groupRefs = useRef<Record<number, THREE.Group | null>>({});
   const currentExplode = useRef(0);
 
@@ -210,7 +209,6 @@ function FloorGroups({
     }
   });
 
-  // In dollhouse mode hide roof + parapet; in isolated mode dim other floors
   const shouldHideRoof = preset === "dollhouse";
 
   return (
@@ -222,6 +220,7 @@ function FloorGroups({
             key={f}
             ref={el => { groupRefs.current[f] = el; }}
           >
+            {/* Structural geometry */}
             {meshes.map(spec => {
               if (shouldHideRoof && (spec.role === "roof-slab" || spec.role === "parapet")) return null;
               return (
@@ -233,6 +232,12 @@ function FloorGroups({
                 />
               );
             })}
+            {/* Furniture for this floor */}
+            {showFurniture && !dimmed && (
+              <Suspense fallback={null}>
+                <FloorFurniture floor={f} rooms={scene.rooms} />
+              </Suspense>
+            )}
           </group>
         );
       })}
@@ -290,11 +295,13 @@ function BuildingScene({
   preset,
   isoFloor,
   wireframe,
+  showFurniture,
 }: {
   scene: SceneData;
   preset: ViewPreset;
   isoFloor: number;
   wireframe: boolean;
+  showFurniture: boolean;
 }) {
   return (
     <>
@@ -305,9 +312,15 @@ function BuildingScene({
         preset={preset}
         isoFloor={isoFloor}
         wireframe={wireframe}
+        showFurniture={showFurniture}
       />
+      {/* Landscape sits at Y=0 outside the exploding floor groups */}
+      {showFurniture && (
+        <Suspense fallback={null}>
+          <PlotLandscape plotWidth={scene.plotWidth} plotDepth={scene.plotDepth} />
+        </Suspense>
+      )}
       <Ground scene={scene} />
-      {/* Grid */}
       <gridHelper
         args={[
           Math.max(scene.plotWidth, scene.plotDepth) * 3,
@@ -321,7 +334,7 @@ function BuildingScene({
   );
 }
 
-// ─── Toolbar button ───────────────────────────────────────────────────────────
+// ─── Toolbar helpers ──────────────────────────────────────────────────────────
 function PresetBtn({
   active,
   label,
@@ -339,9 +352,9 @@ function PresetBtn({
       onClick={onClick}
       className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded transition-all text-[10px] font-semibold"
       style={{
-        background:  active ? "rgba(193,103,42,0.20)" : "rgba(255,255,255,0.04)",
-        border:      `1px solid ${active ? "rgba(193,103,42,0.55)" : "rgba(255,255,255,0.08)"}`,
-        color:       active ? "#e8905a" : "#8aaa60",
+        background: active ? "rgba(193,103,42,0.20)" : "rgba(255,255,255,0.04)",
+        border:     `1px solid ${active ? "rgba(193,103,42,0.55)" : "rgba(255,255,255,0.08)"}`,
+        color:      active ? "#e8905a" : "#8aaa60",
         minWidth: 48,
       }}
     >
@@ -350,7 +363,7 @@ function PresetBtn({
   );
 }
 
-// ─── SVG icons (inline, no extra dep) ────────────────────────────────────────
+// ─── Inline SVG icons ─────────────────────────────────────────────────────────
 const IconTop = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <circle cx="12" cy="12" r="9" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="3" y1="12" x2="21" y2="12" />
@@ -385,41 +398,46 @@ const IconFloor = () => (
 const IconWire = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" />
-    <path d="M2 9l10 7 10-7" strokeDasharray="3 2" /><line x1="12" y1="16" x2="12" y2="22" strokeDasharray="3 2" />
+    <path d="M2 9l10 7 10-7" strokeDasharray="3 2" />
+    <line x1="12" y1="16" x2="12" y2="22" strokeDasharray="3 2" />
+  </svg>
+);
+const IconSofa = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M2 10v7h20v-7" /><path d="M2 14h20" />
+    <path d="M2 10a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3" />
+    <line x1="5" y1="17" x2="5" y2="20" /><line x1="19" y1="17" x2="19" y2="20" />
   </svg>
 );
 
 // ─── Public component ─────────────────────────────────────────────────────────
-interface ThreeViewerProps {
-  scene: SceneData;
-}
+interface ThreeViewerProps { scene: SceneData }
 
 export default function ThreeViewer({ scene }: ThreeViewerProps) {
-  const [preset, setPreset]       = useState<ViewPreset>("iso");
-  const [isoFloor, setIsoFloor]   = useState(0);
-  const [wireframe, setWireframe] = useState(false);
+  const [preset, setPreset]             = useState<ViewPreset>("iso");
+  const [isoFloor, setIsoFloor]         = useState(0);
+  const [wireframe, setWireframe]       = useState(false);
+  const [showFurniture, setFurniture]   = useState(true);
 
-  // Initial camera placed isometrically on mount
   const initPos = useMemo<[number, number, number]>(() => {
     const [cx, , cz] = scene.center;
     const d = scene.diagonal;
     return [cx + d * 0.70, d * 0.65, cz + d * 0.70];
   }, [scene]);
 
-  const floorList = useMemo(() => {
-    const max = scene.floors;
-    return Array.from({ length: max + 1 }, (_, i) => i);
-  }, [scene.floors]);
-
+  const floorList = useMemo(
+    () => Array.from({ length: scene.floors + 1 }, (_, i) => i),
+    [scene.floors],
+  );
   const floorName = (f: number) =>
     f === 0 ? "G" : f === scene.floors ? "Roof" : `F${f}`;
 
   const presets: Array<{ id: ViewPreset; label: React.ReactNode; title: string }> = [
-    { id: "iso",      label: <><IconIso />Isometric</>,   title: "Isometric view" },
-    { id: "top",      label: <><IconTop />Top View</>,    title: "Orthographic top-down view" },
-    { id: "dollhouse",label: <><IconDoll />Dollhouse</>,  title: "Dollhouse view (roof removed)" },
-    { id: "exploded", label: <><IconExplode />Exploded</>, title: "Exploded view — floors separated" },
-    { id: "isolated", label: <><IconFloor />Isolate</>,   title: "Isolate a single floor" },
+    { id: "iso",       label: <><IconIso />Isometric</>,    title: "Isometric view" },
+    { id: "top",       label: <><IconTop />Top View</>,     title: "Orthographic top-down view" },
+    { id: "dollhouse", label: <><IconDoll />Dollhouse</>,   title: "Dollhouse view (roof removed)" },
+    { id: "exploded",  label: <><IconExplode />Exploded</>,  title: "Exploded view — floors separated" },
+    { id: "isolated",  label: <><IconFloor />Isolate</>,    title: "Isolate a single floor" },
   ];
 
   return (
@@ -443,10 +461,9 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           ))}
         </div>
 
-        {/* Divider */}
         <div className="w-px h-8 shrink-0" style={{ background: "#2a3a18" }} />
 
-        {/* Floor selector (visible when "isolated" or always for reference) */}
+        {/* Floor selector */}
         <div className="flex items-center gap-1">
           <span className="text-[9px] font-semibold uppercase tracking-wide mr-0.5" style={{ color: "#5a7a38" }}>
             Floor
@@ -457,15 +474,9 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
               onClick={() => { setIsoFloor(f); if (preset !== "isolated") setPreset("isolated"); }}
               className="w-8 h-7 rounded text-[11px] font-bold transition-all"
               style={{
-                background: (preset === "isolated" && isoFloor === f)
-                  ? "#6aaa38"
-                  : preset === "isolated"
-                    ? "#1a2a10"
-                    : "rgba(255,255,255,0.04)",
-                color: (preset === "isolated" && isoFloor === f)
-                  ? "#fff"
-                  : "#6a8a48",
-                border: `1px solid ${preset === "isolated" && isoFloor === f ? "#6aaa38" : "#2a3820"}`,
+                background: preset === "isolated" && isoFloor === f ? "#6aaa38" : preset === "isolated" ? "#1a2a10" : "rgba(255,255,255,0.04)",
+                color:      preset === "isolated" && isoFloor === f ? "#fff" : "#6a8a48",
+                border:     `1px solid ${preset === "isolated" && isoFloor === f ? "#6aaa38" : "#2a3820"}`,
               }}
             >
               {floorName(f)}
@@ -473,8 +484,15 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           ))}
         </div>
 
-        {/* Divider */}
         <div className="w-px h-8 shrink-0" style={{ background: "#2a3a18" }} />
+
+        {/* Furniture toggle */}
+        <PresetBtn
+          active={showFurniture}
+          label={<><IconSofa />Furniture</>}
+          title="Toggle furniture & landscape"
+          onClick={() => setFurniture(v => !v)}
+        />
 
         {/* Wireframe toggle */}
         <PresetBtn
@@ -484,9 +502,8 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           onClick={() => setWireframe(v => !v)}
         />
 
-        {/* Mesh count */}
         <div className="ml-auto text-[10px]" style={{ color: "#4a6a30" }}>
-          {scene.meshes.length} meshes
+          {scene.meshes.length} meshes · {scene.rooms.length} rooms
         </div>
       </div>
 
@@ -505,12 +522,13 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
               preset={preset}
               isoFloor={isoFloor}
               wireframe={wireframe}
+              showFurniture={showFurniture}
             />
           </Suspense>
         </Canvas>
       </div>
 
-      {/* ── On-canvas overlay tips ─────────────────────────────────────────── */}
+      {/* ── Hints overlay ─────────────────────────────────────────────────── */}
       <div
         className="absolute bottom-3 right-3 text-[9px] leading-relaxed pointer-events-none"
         style={{ color: "#3a5228" }}
