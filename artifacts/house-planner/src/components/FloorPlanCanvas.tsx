@@ -11,6 +11,12 @@ import type {
 // ─── Scale & padding ─────────────────────────────────────────────────────────
 const S  = 40;   // px per metre
 const PD = 80;   // canvas padding for dimension lines
+
+// ─── Unit conversion (internal = metres, display = feet) ─────────────────────
+const M_TO_FT   = 3.28084;
+const M2_TO_SQFT = 10.7639;
+const fmtFt  = (m: number)  => `${Math.round(m * M_TO_FT)} ft`;
+const fmtSqft = (m2: number) => `${Math.round(m2 * M2_TO_SQFT)} sq ft`;
 const DIM_OFFSET  = 32; // px outside plot edge for dim lines
 const DIM_TICK    = 8;
 
@@ -407,14 +413,14 @@ function DimensionLines({ plotWidth, plotDepth }: { plotWidth: number; plotDepth
       <Line points={[ox, oy - off, ox + pw, oy - off]} stroke={C.dimLine} strokeWidth={1} />
       <Line points={[ox, oy - off - tickH, ox, oy - off + tickH]} stroke={C.dimLine} strokeWidth={1} />
       <Line points={[ox + pw, oy - off - tickH, ox + pw, oy - off + tickH]} stroke={C.dimLine} strokeWidth={1} />
-      <Text text={`${plotWidth} m`} x={ox + pw / 2 - 18} y={oy - off - 14} fontSize={10} fill={C.dimText} fontStyle="bold" />
+      <Text text={fmtFt(plotWidth)} x={ox + pw / 2 - 20} y={oy - off - 14} fontSize={10} fill={C.dimText} fontStyle="bold" />
 
       {/* Depth dimension (right) */}
       <Line points={[ox + pw + off, oy, ox + pw + off, oy + pd]} stroke={C.dimLine} strokeWidth={1} />
       <Line points={[ox + pw + off - tickH, oy, ox + pw + off + tickH, oy]} stroke={C.dimLine} strokeWidth={1} />
       <Line points={[ox + pw + off - tickH, oy + pd, ox + pw + off + tickH, oy + pd]} stroke={C.dimLine} strokeWidth={1} />
       <Text
-        text={`${plotDepth} m`}
+        text={fmtFt(plotDepth)}
         x={ox + pw + off + 6}
         y={oy + pd / 2}
         fontSize={10}
