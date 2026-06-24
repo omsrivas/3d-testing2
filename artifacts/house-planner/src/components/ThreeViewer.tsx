@@ -8,26 +8,51 @@ import type { SceneData, BoxSpec, MeshRole } from "@/lib/geometryEngine3d";
 import { FLOOR_TO_FLOOR } from "@/lib/geometryEngine3d/constants";
 import { FloorFurniture, PlotLandscape } from "@/lib/furniture";
 
-// ─── Material palette ─────────────────────────────────────────────────────────
+// ─── Premium Indian modern architecture material palette ──────────────────────
+// Modelled after contemporary Indian residential: lime-washed concrete,
+// smooth plaster, warm teak accents, clear low-E glass, stainless railings.
+
 const ROLE_COLOR: Record<MeshRole, string> = {
-  "exterior-wall":  "#e8dcc8",
-  "interior-wall":  "#d4cbb8",
-  "floor-slab":     "#c4bcac",
-  "roof-slab":      "#b8b0a0",
-  "column":         "#a09888",
-  "parapet":        "#ddd5c2",
-  "balcony-slab":   "#c0b8a8",
-  "balcony-railing":"#b8b0a0",
-  "stair-tread":    "#cac2b0",
-  "door-frame":     "#7a5a30",
-  "window-frame":   "#d8d0c0",
-  "window-glass":   "#88bbdd",
+  "exterior-wall":   "#F0EBE3",   // warm lime-washed concrete
+  "interior-wall":   "#F5F1EB",   // smooth white plaster
+  "floor-slab":      "#D8D4CC",   // polished concrete slab
+  "roof-slab":       "#C8C4BC",   // exposed concrete roof
+  "column":          "#ECE8DF",   // plastered column
+  "parapet":         "#E8E4DB",   // plastered parapet
+  "balcony-slab":    "#CECAC2",   // concrete balcony slab
+  "balcony-railing": "#C4C8CC",   // brushed stainless
+  "stair-tread":     "#D2CEC6",   // concrete tread
+  "door-frame":      "#8B5A2C",   // warm teak wood
+  "window-frame":    "#E8E4DC",   // white anodised aluminium
+  "window-glass":    "#ACCFE8",   // clear low-E glass tint
 };
-const ROLE_OPACITY: Partial<Record<MeshRole, number>> = { "window-glass": 0.32 };
+
+// Opacity — only glass is transparent
+const ROLE_OPACITY: Partial<Record<MeshRole, number>> = {
+  "window-glass": 0.28,
+};
+
+// PBR roughness — concrete is matte, glass near-mirror, steel semi-specular
 const ROLE_ROUGHNESS: Partial<Record<MeshRole, number>> = {
-  "exterior-wall":0.85,"interior-wall":0.80,"floor-slab":0.90,"roof-slab":0.90,
-  "column":0.80,"window-glass":0.04,"window-frame":0.55,"door-frame":0.70,
-  "stair-tread":0.80,"parapet":0.85,
+  "exterior-wall":   0.88,
+  "interior-wall":   0.78,
+  "floor-slab":      0.82,
+  "roof-slab":       0.92,
+  "column":          0.78,
+  "parapet":         0.88,
+  "balcony-slab":    0.84,
+  "balcony-railing": 0.24,
+  "stair-tread":     0.82,
+  "door-frame":      0.68,
+  "window-frame":    0.30,
+  "window-glass":    0.03,
+};
+
+// Metalness — only steel/glass/aluminium elements
+const ROLE_METALNESS: Partial<Record<MeshRole, number>> = {
+  "balcony-railing": 0.72,
+  "window-frame":    0.48,
+  "window-glass":    0.18,
 };
 
 // ─── View presets ─────────────────────────────────────────────────────────────
@@ -57,17 +82,17 @@ function presetCamera(
         target: new THREE.Vector3(cx, cy * 0.25, cz),
       };
     case "exploded": {
-      const totalExtraH = (scene.floors) * FLOOR_TO_FLOOR * 1.4;
+      const extra = scene.floors * FLOOR_TO_FLOOR * 1.4;
       return {
-        pos:    new THREE.Vector3(cx + d * 0.85, cy + d * 0.8 + totalExtraH * 0.4, cz + d * 0.85),
-        target: new THREE.Vector3(cx, cy + totalExtraH * 0.35, cz),
+        pos:    new THREE.Vector3(cx + d * 0.85, cy + d * 0.8 + extra * 0.4, cz + d * 0.85),
+        target: new THREE.Vector3(cx, cy + extra * 0.35, cz),
       };
     }
     case "isolated": {
-      const floorMidY = isoFloor * FLOOR_TO_FLOOR + FLOOR_TO_FLOOR * 0.5;
+      const midY = isoFloor * FLOOR_TO_FLOOR + FLOOR_TO_FLOOR * 0.5;
       return {
-        pos:    new THREE.Vector3(cx + d * 0.65, floorMidY + d * 0.25, cz + d * 0.55),
-        target: new THREE.Vector3(cx, floorMidY, cz),
+        pos:    new THREE.Vector3(cx + d * 0.65, midY + d * 0.25, cz + d * 0.55),
+        target: new THREE.Vector3(cx, midY, cz),
       };
     }
     default: // iso
@@ -88,10 +113,11 @@ function SceneMesh({
   wireframe: boolean;
   dimOpacity?: number;
 }) {
-  const base    = ROLE_OPACITY[spec.role] ?? 1;
-  const opacity = dimOpacity !== undefined ? base * dimOpacity : base;
-  const rough   = ROLE_ROUGHNESS[spec.role] ?? 0.75;
-  const transp  = opacity < 0.99;
+  const base      = ROLE_OPACITY[spec.role] ?? 1;
+  const opacity   = dimOpacity !== undefined ? base * dimOpacity : base;
+  const rough     = ROLE_ROUGHNESS[spec.role] ?? 0.78;
+  const metal     = ROLE_METALNESS[spec.role] ?? 0;
+  const transp    = opacity < 0.99;
 
   return (
     <mesh
@@ -104,10 +130,11 @@ function SceneMesh({
       <meshStandardMaterial
         color={ROLE_COLOR[spec.role]}
         roughness={rough}
-        metalness={0}
+        metalness={metal}
         opacity={opacity}
         transparent={transp}
         wireframe={wireframe && !transp}
+        envMapIntensity={metal > 0.3 ? 0.8 : 0.2}
       />
     </mesh>
   );
@@ -173,7 +200,7 @@ function CameraController({
   );
 }
 
-// ─── Floor groups with animated explode offset ────────────────────────────────
+// ─── Animated floor groups (exploded view) ────────────────────────────────────
 const EXPLODE_GAP = FLOOR_TO_FLOOR * 1.6;
 
 function FloorGroups({
@@ -209,30 +236,25 @@ function FloorGroups({
     }
   });
 
-  const shouldHideRoof = preset === "dollhouse";
+  const hideRoof = preset === "dollhouse";
 
   return (
     <>
       {[...byFloor.entries()].map(([f, meshes]) => {
         const dimmed = preset === "isolated" && f !== isoFloor;
         return (
-          <group
-            key={f}
-            ref={el => { groupRefs.current[f] = el; }}
-          >
-            {/* Structural geometry */}
+          <group key={f} ref={el => { groupRefs.current[f] = el; }}>
             {meshes.map(spec => {
-              if (shouldHideRoof && (spec.role === "roof-slab" || spec.role === "parapet")) return null;
+              if (hideRoof && (spec.role === "roof-slab" || spec.role === "parapet")) return null;
               return (
                 <SceneMesh
                   key={spec.id}
                   spec={spec}
                   wireframe={wireframe}
-                  dimOpacity={dimmed ? 0.12 : undefined}
+                  dimOpacity={dimmed ? 0.10 : undefined}
                 />
               );
             })}
-            {/* Furniture for this floor */}
             {showFurniture && !dimmed && (
               <Suspense fallback={null}>
                 <FloorFurniture floor={f} rooms={scene.rooms} />
@@ -245,51 +267,96 @@ function FloorGroups({
   );
 }
 
-// ─── Lights ───────────────────────────────────────────────────────────────────
+// ─── Lighting — warm Indian afternoon (~4 pm) ─────────────────────────────────
+// Primary: warm golden sun from NW (high elevation)
+// Fill:    cool blue sky light from SE
+// Bounce:  subtle warm ground-reflected fill
+// Hemi:    gradient sky-to-earth ambient
 function Lighting({ scene }: { scene: SceneData }) {
   const d = scene.diagonal;
   const [cx, , cz] = scene.center;
   return (
     <>
-      <ambientLight intensity={0.5} />
+      <ambientLight color="#FFF6EC" intensity={0.35} />
+
+      {/* Primary sun — warm golden, NW high (casts long architectural shadows) */}
       <directionalLight
-        position={[cx + d * 1.4, d * 1.5, cz - d * 0.8]}
-        intensity={1.5}
+        color="#FFE08A"
+        position={[cx + d * 1.1, d * 1.7, cz - d * 0.4]}
+        intensity={2.5}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-far={d * 6}
-        shadow-camera-left={-d * 1.5}
-        shadow-camera-right={d * 1.5}
-        shadow-camera-top={d * 1.5}
-        shadow-camera-bottom={-d * 1.5}
-        shadow-bias={-0.0005}
+        shadow-camera-far={d * 7}
+        shadow-camera-left={-d * 1.8}
+        shadow-camera-right={d * 1.8}
+        shadow-camera-top={d * 1.8}
+        shadow-camera-bottom={-d * 1.8}
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.025}
       />
+
+      {/* Sky fill — cool blue from the opposite side */}
       <directionalLight
-        position={[cx - d * 0.8, d * 0.6, cz + d * 1.2]}
-        intensity={0.30}
+        color="#C0D4F0"
+        position={[cx - d * 0.7, d * 0.5, cz + d * 0.9]}
+        intensity={0.42}
       />
-      <hemisphereLight args={["#7ab0d0", "#2a3820", 0.25]} />
+
+      {/* Bounce fill — warm ground light (Indian concrete/soil bounce) */}
+      <directionalLight
+        color="#E8C890"
+        position={[cx, -d * 0.2, cz]}
+        intensity={0.18}
+      />
+
+      {/* Hemisphere — sky/ground gradient for overall atmosphere */}
+      <hemisphereLight args={["#B8CCE4", "#C8A870", 0.60]} />
     </>
   );
 }
 
-// ─── Ground + Grid ────────────────────────────────────────────────────────────
+// ─── Ground — layered: green lawn + concrete plot paving ──────────────────────
 function Ground({ scene }: { scene: SceneData }) {
-  const s = Math.max(scene.plotWidth, scene.plotDepth) * 3;
+  const { plotWidth: pw, plotDepth: pd } = scene;
+  const extend = Math.max(pw, pd) * 1.8;
+
   return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[scene.plotWidth / 2, -0.002, scene.plotDepth / 2]}
-      receiveShadow
-    >
-      <planeGeometry args={[s, s]} />
-      <meshStandardMaterial color="#20300e" roughness={1} />
-    </mesh>
+    <group>
+      {/* Green lawn extending beyond plot boundary */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[pw / 2, -0.004, pd / 2]}
+        receiveShadow
+      >
+        <planeGeometry args={[pw + extend * 2, pd + extend * 2]} />
+        <meshStandardMaterial color="#4A6630" roughness={0.96} metalness={0} />
+      </mesh>
+
+      {/* Plot paving / concrete hardstanding within the plot footprint */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[pw / 2, -0.001, pd / 2]}
+        receiveShadow
+      >
+        <planeGeometry args={[pw, pd]} />
+        <meshStandardMaterial color="#C8C4BC" roughness={0.90} metalness={0} />
+      </mesh>
+
+      {/* Narrow road strip in front of the plot */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[pw / 2, -0.002, -1.5]}
+        receiveShadow
+      >
+        <planeGeometry args={[pw + extend * 2, 3.0]} />
+        <meshStandardMaterial color="#888480" roughness={0.94} metalness={0} />
+      </mesh>
+    </group>
   );
 }
 
-// ─── Full building scene ──────────────────────────────────────────────────────
+// ─── Full scene ────────────────────────────────────────────────────────────────
 function BuildingScene({
   scene,
   preset,
@@ -314,27 +381,17 @@ function BuildingScene({
         wireframe={wireframe}
         showFurniture={showFurniture}
       />
-      {/* Landscape sits at Y=0 outside the exploding floor groups */}
       {showFurniture && (
         <Suspense fallback={null}>
           <PlotLandscape plotWidth={scene.plotWidth} plotDepth={scene.plotDepth} />
         </Suspense>
       )}
       <Ground scene={scene} />
-      <gridHelper
-        args={[
-          Math.max(scene.plotWidth, scene.plotDepth) * 3,
-          Math.max(scene.plotWidth, scene.plotDepth) * 3,
-          "#3a4a28",
-          "#2a3820",
-        ]}
-        position={[scene.plotWidth / 2, 0, scene.plotDepth / 2]}
-      />
     </>
   );
 }
 
-// ─── Toolbar helpers ──────────────────────────────────────────────────────────
+// ─── Toolbar button ───────────────────────────────────────────────────────────
 function PresetBtn({
   active,
   label,
@@ -352,9 +409,9 @@ function PresetBtn({
       onClick={onClick}
       className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded transition-all text-[10px] font-semibold"
       style={{
-        background: active ? "rgba(193,103,42,0.20)" : "rgba(255,255,255,0.04)",
-        border:     `1px solid ${active ? "rgba(193,103,42,0.55)" : "rgba(255,255,255,0.08)"}`,
-        color:      active ? "#e8905a" : "#8aaa60",
+        background: active ? "rgba(210,130,40,0.22)" : "rgba(255,255,255,0.05)",
+        border:     `1px solid ${active ? "rgba(210,130,40,0.55)" : "rgba(255,255,255,0.09)"}`,
+        color:      active ? "#E09858" : "#9AAAB8",
         minWidth: 48,
       }}
     >
@@ -363,22 +420,27 @@ function PresetBtn({
   );
 }
 
-// ─── Inline SVG icons ─────────────────────────────────────────────────────────
+// ─── SVG icons ────────────────────────────────────────────────────────────────
 const IconTop = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="9" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="3" y1="12" x2="21" y2="12" />
+    <circle cx="12" cy="12" r="9" />
+    <line x1="12" y1="3" x2="12" y2="21" />
+    <line x1="3" y1="12" x2="21" y2="12" />
   </svg>
 );
 const IconIso = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" /><line x1="12" y1="2" x2="12" y2="22" />
+    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" />
+    <line x1="12" y1="2" x2="12" y2="22" />
     <line x1="2" y1="9" x2="22" y2="9" />
   </svg>
 );
 const IconDoll = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 9l9-7 9 7v11H3Z" /><line x1="3" y1="14" x2="21" y2="14" />
-    <line x1="9" y1="21" x2="9" y2="14" /><line x1="15" y1="21" x2="15" y2="14" />
+    <path d="M3 9l9-7 9 7v11H3Z" />
+    <line x1="3" y1="14" x2="21" y2="14" />
+    <line x1="9" y1="21" x2="9" y2="14" />
+    <line x1="15" y1="21" x2="15" y2="14" />
   </svg>
 );
 const IconExplode = () => (
@@ -404,20 +466,22 @@ const IconWire = () => (
 );
 const IconSofa = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 10v7h20v-7" /><path d="M2 14h20" />
+    <path d="M2 10v7h20v-7" />
+    <path d="M2 14h20" />
     <path d="M2 10a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3" />
-    <line x1="5" y1="17" x2="5" y2="20" /><line x1="19" y1="17" x2="19" y2="20" />
+    <line x1="5" y1="17" x2="5" y2="20" />
+    <line x1="19" y1="17" x2="19" y2="20" />
   </svg>
 );
 
-// ─── Public component ─────────────────────────────────────────────────────────
+// ─── Main exported component ──────────────────────────────────────────────────
 interface ThreeViewerProps { scene: SceneData }
 
 export default function ThreeViewer({ scene }: ThreeViewerProps) {
-  const [preset, setPreset]             = useState<ViewPreset>("iso");
-  const [isoFloor, setIsoFloor]         = useState(0);
-  const [wireframe, setWireframe]       = useState(false);
-  const [showFurniture, setFurniture]   = useState(true);
+  const [preset, setPreset]           = useState<ViewPreset>("iso");
+  const [isoFloor, setIsoFloor]       = useState(0);
+  const [wireframe, setWireframe]     = useState(false);
+  const [showFurniture, setFurniture] = useState(true);
 
   const initPos = useMemo<[number, number, number]>(() => {
     const [cx, , cz] = scene.center;
@@ -430,25 +494,29 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
     [scene.floors],
   );
   const floorName = (f: number) =>
-    f === 0 ? "G" : f === scene.floors ? "Roof" : `F${f}`;
+    f === 0 ? "G" : f === scene.floors ? "Rf" : `F${f}`;
 
   const presets: Array<{ id: ViewPreset; label: React.ReactNode; title: string }> = [
-    { id: "iso",       label: <><IconIso />Isometric</>,    title: "Isometric view" },
-    { id: "top",       label: <><IconTop />Top View</>,     title: "Orthographic top-down view" },
-    { id: "dollhouse", label: <><IconDoll />Dollhouse</>,   title: "Dollhouse view (roof removed)" },
-    { id: "exploded",  label: <><IconExplode />Exploded</>,  title: "Exploded view — floors separated" },
-    { id: "isolated",  label: <><IconFloor />Isolate</>,    title: "Isolate a single floor" },
+    { id: "iso",       label: <><IconIso />Isometric</>,   title: "Isometric view" },
+    { id: "top",       label: <><IconTop />Top View</>,    title: "Orthographic top-down" },
+    { id: "dollhouse", label: <><IconDoll />Dollhouse</>,  title: "Dollhouse (roof hidden)" },
+    { id: "exploded",  label: <><IconExplode />Exploded</>, title: "Exploded floors" },
+    { id: "isolated",  label: <><IconFloor />Isolate</>,   title: "Isolate one floor" },
   ];
 
-  return (
-    <div className="relative w-full h-full flex flex-col" style={{ background: "#0d120a" }}>
+  // Toolbar chrome: dark charcoal (premium neutral, not green)
+  const TB = "#18181B";   // toolbar bg
+  const TBB = "#27272A";  // toolbar border
 
-      {/* ── Toolbar ───────────────────────────────────────────────────────── */}
+  return (
+    <div className="relative w-full h-full flex flex-col" style={{ background: "#F0EDE8" }}>
+
+      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div
         className="shrink-0 flex items-center gap-2 px-3 py-2 overflow-x-auto"
-        style={{ background: "#111a09", borderBottom: "1px solid #2a3a18" }}
+        style={{ background: TB, borderBottom: `1px solid ${TBB}` }}
       >
-        {/* View preset buttons */}
+        {/* Preset buttons */}
         <div className="flex items-center gap-1.5 mr-1">
           {presets.map(p => (
             <PresetBtn
@@ -461,11 +529,11 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           ))}
         </div>
 
-        <div className="w-px h-8 shrink-0" style={{ background: "#2a3a18" }} />
+        <div className="w-px h-8 shrink-0" style={{ background: TBB }} />
 
-        {/* Floor selector */}
+        {/* Floor badges */}
         <div className="flex items-center gap-1">
-          <span className="text-[9px] font-semibold uppercase tracking-wide mr-0.5" style={{ color: "#5a7a38" }}>
+          <span className="text-[9px] font-semibold uppercase tracking-wide mr-0.5" style={{ color: "#5A6A78" }}>
             Floor
           </span>
           {floorList.map(f => (
@@ -474,9 +542,13 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
               onClick={() => { setIsoFloor(f); if (preset !== "isolated") setPreset("isolated"); }}
               className="w-8 h-7 rounded text-[11px] font-bold transition-all"
               style={{
-                background: preset === "isolated" && isoFloor === f ? "#6aaa38" : preset === "isolated" ? "#1a2a10" : "rgba(255,255,255,0.04)",
-                color:      preset === "isolated" && isoFloor === f ? "#fff" : "#6a8a48",
-                border:     `1px solid ${preset === "isolated" && isoFloor === f ? "#6aaa38" : "#2a3820"}`,
+                background: preset === "isolated" && isoFloor === f
+                  ? "#E09040"
+                  : preset === "isolated"
+                    ? "#27272A"
+                    : "rgba(255,255,255,0.05)",
+                color:  preset === "isolated" && isoFloor === f ? "#FFF" : "#7A8A98",
+                border: `1px solid ${preset === "isolated" && isoFloor === f ? "#E09040" : TBB}`,
               }}
             >
               {floorName(f)}
@@ -484,38 +556,38 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           ))}
         </div>
 
-        <div className="w-px h-8 shrink-0" style={{ background: "#2a3a18" }} />
+        <div className="w-px h-8 shrink-0" style={{ background: TBB }} />
 
-        {/* Furniture toggle */}
+        {/* Toggles */}
         <PresetBtn
           active={showFurniture}
           label={<><IconSofa />Furniture</>}
           title="Toggle furniture & landscape"
           onClick={() => setFurniture(v => !v)}
         />
-
-        {/* Wireframe toggle */}
         <PresetBtn
           active={wireframe}
           label={<><IconWire />Wireframe</>}
-          title="Toggle wireframe overlay"
+          title="Wireframe overlay"
           onClick={() => setWireframe(v => !v)}
         />
 
-        <div className="ml-auto text-[10px]" style={{ color: "#4a6a30" }}>
+        {/* Stats */}
+        <div className="ml-auto text-[10px]" style={{ color: "#4A5A68" }}>
           {scene.meshes.length} meshes · {scene.rooms.length} rooms
         </div>
       </div>
 
-      {/* ── Canvas ────────────────────────────────────────────────────────── */}
+      {/* ── 3D Canvas — warm architectural visualization background ─────────── */}
       <div className="flex-1 w-full">
         <Canvas
           shadows={{ type: THREE.PCFSoftShadowMap }}
-          gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
-          camera={{ position: initPos, fov: 48, near: 0.1, far: 8000 }}
-          style={{ background: "#0d120a" }}
+          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
+          camera={{ position: initPos, fov: 46, near: 0.1, far: 8000 }}
+          style={{ background: "#E8EEF4" }}
           resize={{ debounce: 0, scroll: false }}
         >
+          <fog attach="fog" args={["#E8EEF4", scene.diagonal * 4, scene.diagonal * 10]} />
           <Suspense fallback={null}>
             <BuildingScene
               scene={scene}
@@ -528,34 +600,44 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
         </Canvas>
       </div>
 
-      {/* ── Hints overlay ─────────────────────────────────────────────────── */}
+      {/* ── Interaction hint ────────────────────────────────────────────────── */}
       <div
         className="absolute bottom-3 right-3 text-[9px] leading-relaxed pointer-events-none"
-        style={{ color: "#3a5228" }}
+        style={{ color: "rgba(60,50,40,0.38)" }}
       >
-        Drag to rotate · Scroll to zoom · Right-drag to pan
+        Drag · Scroll · Right-drag to pan
       </div>
 
-      {/* ── Legend ────────────────────────────────────────────────────────── */}
+      {/* ── Material legend ─────────────────────────────────────────────────── */}
       <div
-        className="absolute bottom-3 left-3 rounded-lg p-2.5"
-        style={{ background: "rgba(17,26,9,0.92)", border: "1px solid #2a3820" }}
+        className="absolute bottom-3 left-3 rounded-xl p-2.5 backdrop-blur-sm"
+        style={{
+          background: "rgba(255,253,250,0.92)",
+          border: "1px solid rgba(180,170,155,0.30)",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+        }}
       >
-        <div className="text-[8px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#5a7a38" }}>Legend</div>
+        <div className="text-[8px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#6A5A48" }}>
+          Materials
+        </div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
           {(
             [
               "exterior-wall","interior-wall","floor-slab","roof-slab",
-              "column","parapet","stair-tread","door-frame","window-frame","window-glass",
-              "balcony-slab","balcony-railing",
+              "column","door-frame","window-frame","window-glass",
+              "balcony-slab","balcony-railing","stair-tread","parapet",
             ] as MeshRole[]
           ).map(role => (
             <div key={role} className="flex items-center gap-1.5">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-                style={{ background: ROLE_COLOR[role], opacity: ROLE_OPACITY[role] ?? 1 }}
+                style={{
+                  background: ROLE_COLOR[role],
+                  opacity: ROLE_OPACITY[role] ?? 1,
+                  border: "0.5px solid rgba(0,0,0,0.08)",
+                }}
               />
-              <span className="text-[8px] capitalize" style={{ color: "#7a9a58" }}>
+              <span className="text-[8px] capitalize" style={{ color: "#7A6A58" }}>
                 {role.replace(/-/g, " ")}
               </span>
             </div>

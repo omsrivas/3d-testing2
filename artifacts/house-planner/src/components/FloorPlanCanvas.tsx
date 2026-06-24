@@ -14,30 +14,31 @@ const PD = 80;   // canvas padding for dimension lines
 const DIM_OFFSET  = 32; // px outside plot edge for dim lines
 const DIM_TICK    = 8;
 
-// ─── Colour palette ───────────────────────────────────────────────────────────
+// ─── Colour palette — premium Indian architectural drawing ────────────────────
+// White background, dark walls, warm accents — matches MakeMyHouse style.
 const C = {
-  canvasBg:     "#141a0c",
-  plotBg:       "#1e2814",
-  garden:       "#263318",
-  gardenBdr:    "#3a5224",
-  extWall:      "#c1672a",   // terracotta
-  intWall:      "#8a6840",
-  dimLine:      "#c8b880",
-  dimText:      "#d4c890",
-  compassBody:  "#d4c890",
-  compassN:     "#e85c3a",
-  labelText:    "#1a1408",
-  labelBg:      "rgba(255,248,218,0.90)",
-  areaText:     "#5a4020",
-  doorArc:      "#c1672a",
-  doorLeaf:     "#c1672a",
-  winFrame:     "#4a8aaa",
-  winGlass:     "rgba(160,220,255,0.45)",
-  furniture:    "#8a7050",
-  stairLine:    "#8a7050",
-  parkingChev:  "#6b7a5a",
-  gridLine:     "rgba(255,255,255,0.04)",
-  setbackLine:  "rgba(120,180,80,0.25)",
+  canvasBg:     "#F5F2EC",               // warm tracing-paper white
+  plotBg:       "#EDE9E2",               // plot fill — slightly warmer
+  garden:       "#D8E8CC",               // green setback / lawn
+  gardenBdr:    "#A8C898",               // lawn edge
+  extWall:      "#2C2622",               // near-black structural wall
+  intWall:      "#5A504A",               // dark-gray partition wall
+  dimLine:      "#9A8870",               // warm taupe dimension lines
+  dimText:      "#7A6A58",               // dimension text
+  compassBody:  "#5A5050",               // compass body
+  compassN:     "#C03020",               // compass north (muted red)
+  labelText:    "#1E1810",               // room label (near-black)
+  labelBg:      "rgba(255,253,248,0.96)",// label background — near-white
+  areaText:     "#6A5A48",               // area sqft text
+  doorArc:      "#8B5A2C",               // door swing — teak brown
+  doorLeaf:     "#8B5A2C",               // door leaf — teak brown
+  winFrame:     "#6090B0",               // window frame — steel blue
+  winGlass:     "rgba(160,220,248,0.50)",// window glass tint
+  furniture:    "#9A8268",               // 2D furniture lines
+  stairLine:    "#7A6858",               // stair tread lines
+  parkingChev:  "#888878",               // parking chevrons
+  gridLine:     "rgba(120,110,90,0.06)", // very subtle warm grid
+  setbackLine:  "rgba(100,160,80,0.30)", // green setback guideline
 };
 
 const ROOM_FILLS: Record<string, string> = {
