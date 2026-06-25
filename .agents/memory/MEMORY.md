@@ -1,4 +1,5 @@
 - [React 19 + react-konva compat](react19-konva.md) — react-konva v18 bundles its own reconciler that crashes with React 19; upgrade to react-konva v19 instead of shimming.
-- [PBR materials approach](pbr-materials.md) — procedural CanvasTexture textures created outside R3F Canvas and passed as props; Environment preset="city" for reflections.
+- [React 19 + R3F v8 shim](r3f-react19-shim.md) — R3F v8 reconciler reads __SECRET_INTERNALS that React 19 may not provide; shim must create the object and all needed stubs before R3F lazy-loads.
+- [PBR materials approach](pbr-materials.md) — procedural CanvasTexture textures created outside R3F Canvas and passed as props; Environment preset="apartment" for reflections.
 - [Postprocessing + lighting](postprocessing-lighting.md) — N8AO v2.16 with R3F v8; enableNormalPass={false} not disableNormalPass
 - [3D rendering optimizations](render-optimizations.md) — InstancedMesh per (role, floor), module-level texture singleton, lazy furniture, LOD trees, mobile quality scaling.

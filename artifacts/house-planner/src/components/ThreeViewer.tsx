@@ -203,7 +203,7 @@ function stuccoTexture(size = 512): THREE.CanvasTexture {
   }
   ctx.putImageData(img, 0, 0);
   for (let i = 0; i < 60; i++) {
-    const sy = rand() * size, len = 40 + rand() * 100;
+    const sy = rand() * size;
     const bright = Math.round(195 + rand() * 30);
     ctx.strokeStyle = `rgba(${bright},${bright - 3},${bright - 7},${0.04 + rand() * 0.07})`;
     ctx.lineWidth = 0.3 + rand() * 0.8;
