@@ -447,21 +447,41 @@ function useTextures() {
 }
 
 // ─── PBR material resolver ────────────────────────────────────────────────────
+// targetOpacity drives a smooth per-mesh animation via useFrame (no re-render needed)
 function PBRMesh({
   spec,
   textures,
   wireframe,
-  dimOpacity,
+  targetOpacity = 1,
 }: {
   spec: BoxSpec;
   textures: ReturnType<typeof useTextures>;
   wireframe: boolean;
-  dimOpacity?: number;
+  targetOpacity?: number;
 }) {
   const mat = ROLE_MAT[spec.role];
   const baseOpacity = mat.opacity ?? 1;
-  const opacity = dimOpacity !== undefined ? baseOpacity * dimOpacity : baseOpacity;
-  const transparent = opacity < 0.999 || (mat.transmission ?? 0) > 0;
+  const isGlass = (mat.transmission ?? 0) > 0;
+
+  // currOp animates toward targetOpacity * baseOpacity every frame
+  const currOp   = useRef(targetOpacity * baseOpacity);
+  const meshRef   = useRef<THREE.Mesh>(null);
+
+  // Imperatively lerp opacity — no React state, no re-renders
+  useFrame((_, dt) => {
+    const want = targetOpacity * baseOpacity;
+    currOp.current = THREE.MathUtils.lerp(currOp.current, want, Math.min(1, dt * 5.5));
+    const op = currOp.current;
+    if (!meshRef.current) return;
+
+    const m = meshRef.current.material as
+      THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial;
+    m.opacity      = op;
+    m.transparent  = op < 0.998 || isGlass;
+    m.depthWrite   = op > 0.95 && !isGlass;
+    meshRef.current.castShadow  = !isGlass && op > 0.50;
+    meshRef.current.visible     = op > 0.004;
+  });
 
   // Map texture key → actual texture
   const map = useMemo(() => {
@@ -497,13 +517,16 @@ function PBRMesh({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mat.roughKey]);
 
-  const isGlass = (mat.transmission ?? 0) > 0;
+  // Initial opacity value used on first render (currOp.current at mount time)
+  const initOp = currOp.current;
+  const initTransparent = initOp < 0.998 || isGlass;
 
   return (
     <mesh
+      ref={meshRef}
       position={[spec.cx, spec.cy, spec.cz]}
       rotation={[0, spec.ry, 0]}
-      castShadow={!isGlass}
+      castShadow={!isGlass && initOp > 0.5}
       receiveShadow
     >
       <boxGeometry args={[spec.w, spec.h, spec.d]} />
@@ -516,8 +539,9 @@ function PBRMesh({
           transmission={mat.transmission}
           ior={mat.ior ?? 1.5}
           reflectivity={mat.reflectivity ?? 0.5}
-          opacity={opacity}
-          transparent={transparent}
+          opacity={initOp}
+          transparent
+          depthWrite={false}
           envMapIntensity={mat.envMapIntensity ?? 1.0}
           map={map}
           wireframe={false}
@@ -527,14 +551,15 @@ function PBRMesh({
           color={mat.color}
           roughness={mat.roughness}
           metalness={mat.metalness}
-          opacity={opacity}
-          transparent={transparent}
+          opacity={initOp}
+          transparent={initTransparent}
+          depthWrite={!initTransparent}
           envMapIntensity={mat.envMapIntensity ?? 0.2}
           map={map ?? undefined}
           normalMap={normalMap ?? undefined}
           normalScale={new THREE.Vector2(0.6, 0.6)}
           roughnessMap={roughMap ?? undefined}
-          wireframe={wireframe && !transparent}
+          wireframe={wireframe && initOp > 0.95}
         />
       )}
     </mesh>
@@ -608,9 +633,10 @@ function presetCamera(
       };
     }
     case "dollhouse":
+      // Steep overhead angle (~68°) — looks straight down into open building
       return {
-        pos:    new THREE.Vector3(cx - d * 0.45, cy + d * 1.15, cz + d * 0.45),
-        target: new THREE.Vector3(cx, cy * 0.25, cz),
+        pos:    new THREE.Vector3(cx - d * 0.30, cy + d * 1.60, cz + d * 0.32),
+        target: new THREE.Vector3(cx, 0, cz),
       };
     case "exploded": {
       const extra = scene.floors * FLOOR_TO_FLOOR * 1.4;
@@ -759,8 +785,43 @@ function CameraController({
   );
 }
 
-// ─── Animated floor groups (exploded view) ────────────────────────────────────
+// ─── Animated floor groups ────────────────────────────────────────────────────
 const EXPLODE_GAP = FLOOR_TO_FLOOR * 1.6;
+
+/**
+ * Compute per-mesh target opacity for dollhouse / isolated modes.
+ *
+ * Dollhouse logic (multi-floor buildings):
+ *  • roof-slab / parapet  → 0   (fully faded — no roof)
+ *  • upper floor-slab     → 0.07  (ceiling nearly invisible → see through to rooms below)
+ *  • upper exterior/interior walls, columns → 0.18  (ghost outlines — no shadow blocking)
+ *  • upper decorative (door, window, stair)  → 0.24  (softer ghost)
+ *  • ground floor all     → 1.0  (fully opaque — "base" of the doll house)
+ *
+ * Isolated mode: everything except the selected floor is dimmed to 0.09.
+ */
+function getTargetOpacity(
+  role: string,
+  floor: number,
+  preset: ViewPreset,
+  isoFloor: number,
+): number {
+  if (preset === "isolated") {
+    return floor === isoFloor ? 1 : 0.09;
+  }
+  if (preset === "dollhouse") {
+    if (role === "roof-slab" || role === "parapet") return 0;
+    if (floor > 0) {
+      if (role === "floor-slab")                                           return 0.07;
+      if (role === "exterior-wall" || role === "interior-wall"
+          || role === "column" || role === "balcony-slab"
+          || role === "balcony-railing")                                   return 0.18;
+      // door/window frames, stairs, handles — slightly more visible
+      return 0.26;
+    }
+  }
+  return 1;
+}
 
 function FloorGroups({
   scene,
@@ -788,36 +849,45 @@ function FloorGroups({
 
   const groupRefs = useRef<Record<number, THREE.Group | null>>({});
   const currentExplode = useRef(0);
+  // Keep refs for preset/isoFloor so useFrame always sees latest values
+  const presetRef   = useRef(preset);
+  const isoFloorRef = useRef(isoFloor);
+  presetRef.current   = preset;
+  isoFloorRef.current = isoFloor;
 
   useFrame((_, dt) => {
-    const want = preset === "exploded" ? EXPLODE_GAP : 0;
-    currentExplode.current = THREE.MathUtils.lerp(currentExplode.current, want, dt * 3.5);
+    const wantExplode = presetRef.current === "exploded" ? EXPLODE_GAP : 0;
+    currentExplode.current = THREE.MathUtils.lerp(
+      currentExplode.current, wantExplode, Math.min(1, dt * 3.5),
+    );
     for (const [f, grp] of Object.entries(groupRefs.current)) {
       if (grp) grp.position.y = Number(f) * currentExplode.current;
     }
   });
 
-  const hideRoof = preset === "dollhouse";
-
   return (
     <>
       {[...byFloor.entries()].map(([f, meshes]) => {
-        const dimmed = preset === "isolated" && f !== isoFloor;
+        // Furniture visibility: always show on ground floor; show upper floors
+        // in dollhouse (dimmed ghost walls let you see furniture below ceiling)
+        const hideFurniture = preset === "isolated" && f !== isoFloor;
+
         return (
           <group key={f} ref={el => { groupRefs.current[f] = el; }}>
             {meshes.map(spec => {
-              if (hideRoof && (spec.role === "roof-slab" || spec.role === "parapet")) return null;
+              const tgt = getTargetOpacity(spec.role, f, preset, isoFloor);
               return (
                 <PBRMesh
                   key={spec.id}
                   spec={spec}
                   textures={textures}
                   wireframe={wireframe}
-                  dimOpacity={dimmed ? 0.10 : undefined}
+                  targetOpacity={tgt}
                 />
               );
             })}
-            {showFurniture && !dimmed && (
+
+            {showFurniture && !hideFurniture && (
               <Suspense fallback={null}>
                 <FloorFurniture floor={f} rooms={scene.rooms} />
               </Suspense>
