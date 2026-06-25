@@ -13,7 +13,7 @@ import { CounterRun, Sink, Stove } from "./kitchen";
 import { DiningTable, DiningChair } from "./dining";
 import { WC, WashBasin, Shower } from "./bathroom";
 import { Car } from "./parking";
-import { Tree, SmallTree, Plant, LargePlant } from "./landscape";
+import { Tree, SmallTree, Plant, LargePlant, PlotLandscape } from "./landscape";
 
 // ─── Per-room furniture ────────────────────────────────────────────────────────
 function RoomFurniture({ room }: { room: Room }) {
@@ -202,52 +202,8 @@ function RoomFurniture({ room }: { room: Room }) {
   }
 }
 
-// ─── Plot-level landscape ─────────────────────────────────────────────────────
-export function PlotLandscape({
-  plotWidth,
-  plotDepth,
-}: {
-  plotWidth: number;
-  plotDepth: number;
-}) {
-  // Trees near each corner of the plot (set back 1.5 m from boundary)
-  const treePositions: [number, number, number][] = [
-    [1.5,                0, 1.5],
-    [plotWidth - 1.5,    0, 1.5],
-    [1.5,                0, plotDepth - 1.5],
-    [plotWidth - 1.5,    0, plotDepth - 1.5],
-  ];
-
-  // Small trees along side boundaries
-  const sidePositions: [number, number, number][] = [];
-  const step = 4.0;
-  for (let z = step; z < plotDepth - step; z += step) {
-    if (Math.abs(z - plotDepth / 2) > 1.0) {
-      sidePositions.push([-1.0, 0, z]);
-      sidePositions.push([plotWidth + 1.0, 0, z]);
-    }
-  }
-
-  // Plants along front setback
-  const plantPositions: [number, number, number][] = [];
-  for (let x = 1.8; x < plotWidth - 1.8; x += 2.2) {
-    plantPositions.push([x, 0, 0.7]);
-  }
-
-  return (
-    <>
-      {treePositions.map((p, i) => (
-        <Tree key={`tree-${i}`} position={p} rotation={(i * 1.3) % (Math.PI * 2)} />
-      ))}
-      {sidePositions.map((p, i) => (
-        <SmallTree key={`stree-${i}`} position={p} rotation={(i * 0.9) % (Math.PI * 2)} />
-      ))}
-      {plantPositions.map((p, i) => (
-        <Plant key={`plant-${i}`} position={p} rotation={(i * 0.7) % (Math.PI * 2)} />
-      ))}
-    </>
-  );
-}
+// PlotLandscape is imported from ./landscape (premium full-plot composition)
+export { PlotLandscape };
 
 // ─── Floor furniture (placed inside each floor's Group for explode support) ───
 export function FloorFurniture({
