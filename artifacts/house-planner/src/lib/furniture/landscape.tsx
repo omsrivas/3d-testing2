@@ -2,6 +2,10 @@
 // All dimensions in metres. Y=0 = ground level.
 // Plot coordinate system: X = west→east, Z = south (street) → north (back).
 
+import { useRef, useMemo } from "react";
+import { useThree, useFrame } from "@react-three/fiber";
+import * as THREE from "three";
+
 type V3 = [number, number, number];
 
 const C = {
@@ -51,57 +55,121 @@ const C = {
 
 // ═══ EXISTING ELEMENTS (unchanged API for backward compatibility) ═════════════
 
-// ── Tree — three-layer low-poly canopy ───────────────────────────────────────
+// ── LOD distance threshold (metres from camera) ────────────────────────────
+const TREE_LOD_NEAR = 22;
+const SMALL_TREE_LOD_NEAR = 18;
+
+// ── Tree — LOD: high detail when camera is close, billboard sphere when far ──
 export function Tree({
   position, rotation = 0, scale = 1,
 }: { position: V3; rotation?: number; scale?: number }) {
   const s = scale;
+  const highRef = useRef<THREE.Group>(null);
+  const lowRef  = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+  const posVec = useMemo(
+    () => new THREE.Vector3(position[0], position[1], position[2]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [position[0], position[1], position[2]],
+  );
+
+  useFrame(() => {
+    const near = camera.position.distanceTo(posVec) < TREE_LOD_NEAR;
+    if (highRef.current) highRef.current.visible = near;
+    if (lowRef.current)  lowRef.current.visible  = !near;
+  });
+
   return (
     <group position={position} rotation={[0, rotation, 0]} scale={[s, s, s]}>
-      <mesh position={[0, 0.10, 0]} receiveShadow>
-        <cylinderGeometry args={[0.14, 0.18, 0.20, 6]} />
-        <meshStandardMaterial color={C.barkDark} roughness={0.92} />
-      </mesh>
-      <mesh position={[0, 0.90, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.10, 0.13, 1.60, 6]} />
-        <meshStandardMaterial color={C.bark} roughness={0.90} />
-      </mesh>
-      <mesh position={[0, 1.85, 0]} castShadow>
-        <cylinderGeometry args={[0.06, 0.10, 0.70, 6]} />
-        <meshStandardMaterial color={C.bark} roughness={0.88} />
-      </mesh>
-      <mesh position={[0, 2.30, 0]} castShadow>
-        <sphereGeometry args={[1.15, 7, 5]} />
-        <meshStandardMaterial color={C.canopy2} roughness={0.92} />
-      </mesh>
-      <mesh position={[0.15, 2.85, 0.10]} castShadow>
-        <sphereGeometry args={[0.90, 6, 4]} />
-        <meshStandardMaterial color={C.canopy1} roughness={0.90} />
-      </mesh>
-      <mesh position={[-0.10, 3.28, -0.08]} castShadow>
-        <sphereGeometry args={[0.62, 5, 4]} />
-        <meshStandardMaterial color={C.canopy3} roughness={0.88} />
-      </mesh>
+      {/* ── High detail (near camera) ── */}
+      <group ref={highRef}>
+        <mesh position={[0, 0.10, 0]} receiveShadow>
+          <cylinderGeometry args={[0.14, 0.18, 0.20, 6]} />
+          <meshStandardMaterial color={C.barkDark} roughness={0.92} />
+        </mesh>
+        <mesh position={[0, 0.90, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.10, 0.13, 1.60, 6]} />
+          <meshStandardMaterial color={C.bark} roughness={0.90} />
+        </mesh>
+        <mesh position={[0, 1.85, 0]} castShadow>
+          <cylinderGeometry args={[0.06, 0.10, 0.70, 6]} />
+          <meshStandardMaterial color={C.bark} roughness={0.88} />
+        </mesh>
+        <mesh position={[0, 2.30, 0]} castShadow>
+          <sphereGeometry args={[1.15, 7, 5]} />
+          <meshStandardMaterial color={C.canopy2} roughness={0.92} />
+        </mesh>
+        <mesh position={[0.15, 2.85, 0.10]} castShadow>
+          <sphereGeometry args={[0.90, 6, 4]} />
+          <meshStandardMaterial color={C.canopy1} roughness={0.90} />
+        </mesh>
+        <mesh position={[-0.10, 3.28, -0.08]} castShadow>
+          <sphereGeometry args={[0.62, 5, 4]} />
+          <meshStandardMaterial color={C.canopy3} roughness={0.88} />
+        </mesh>
+      </group>
+
+      {/* ── Low detail (far — single trunk + single sphere) ── */}
+      <group ref={lowRef}>
+        <mesh position={[0, 0.90, 0]}>
+          <cylinderGeometry args={[0.11, 0.16, 1.80, 5]} />
+          <meshStandardMaterial color={C.bark} roughness={0.90} />
+        </mesh>
+        <mesh position={[0, 2.65, 0]} castShadow>
+          <sphereGeometry args={[1.25, 5, 3]} />
+          <meshStandardMaterial color={C.canopy2} roughness={0.92} />
+        </mesh>
+      </group>
     </group>
   );
 }
 
-// ── Small Tree ────────────────────────────────────────────────────────────────
+// ── Small Tree — LOD ──────────────────────────────────────────────────────────
 export function SmallTree({ position, rotation = 0 }: { position: V3; rotation?: number }) {
+  const highRef = useRef<THREE.Group>(null);
+  const lowRef  = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+  const posVec = useMemo(
+    () => new THREE.Vector3(position[0], position[1], position[2]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [position[0], position[1], position[2]],
+  );
+
+  useFrame(() => {
+    const near = camera.position.distanceTo(posVec) < SMALL_TREE_LOD_NEAR;
+    if (highRef.current) highRef.current.visible = near;
+    if (lowRef.current)  lowRef.current.visible  = !near;
+  });
+
   return (
     <group position={position} rotation={[0, rotation, 0]}>
-      <mesh position={[0, 0.50, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.06, 0.09, 1.00, 6]} />
-        <meshStandardMaterial color={C.bark} roughness={0.90} />
-      </mesh>
-      <mesh position={[0, 1.30, 0]} castShadow>
-        <sphereGeometry args={[0.65, 6, 4]} />
-        <meshStandardMaterial color={C.canopy2} roughness={0.90} />
-      </mesh>
-      <mesh position={[0.10, 1.65, 0.08]} castShadow>
-        <sphereGeometry args={[0.48, 5, 4]} />
-        <meshStandardMaterial color={C.canopy1} roughness={0.88} />
-      </mesh>
+      {/* ── High detail ── */}
+      <group ref={highRef}>
+        <mesh position={[0, 0.50, 0]} castShadow receiveShadow>
+          <cylinderGeometry args={[0.06, 0.09, 1.00, 6]} />
+          <meshStandardMaterial color={C.bark} roughness={0.90} />
+        </mesh>
+        <mesh position={[0, 1.30, 0]} castShadow>
+          <sphereGeometry args={[0.65, 6, 4]} />
+          <meshStandardMaterial color={C.canopy2} roughness={0.90} />
+        </mesh>
+        <mesh position={[0.10, 1.65, 0.08]} castShadow>
+          <sphereGeometry args={[0.48, 5, 4]} />
+          <meshStandardMaterial color={C.canopy1} roughness={0.88} />
+        </mesh>
+      </group>
+
+      {/* ── Low detail ── */}
+      <group ref={lowRef}>
+        <mesh position={[0, 0.50, 0]}>
+          <cylinderGeometry args={[0.07, 0.09, 1.00, 5]} />
+          <meshStandardMaterial color={C.bark} roughness={0.90} />
+        </mesh>
+        <mesh position={[0, 1.45, 0]} castShadow>
+          <sphereGeometry args={[0.72, 5, 3]} />
+          <meshStandardMaterial color={C.canopy2} roughness={0.90} />
+        </mesh>
+      </group>
     </group>
   );
 }
