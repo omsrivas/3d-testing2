@@ -2,72 +2,543 @@ import {
   useRef, useMemo, useState, useEffect, Suspense,
 } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { OrbitControls, Environment } from "@react-three/drei";
 import * as THREE from "three";
 import type { SceneData, BoxSpec, MeshRole } from "@/lib/geometryEngine3d";
 import { FLOOR_TO_FLOOR } from "@/lib/geometryEngine3d/constants";
 import { FloorFurniture, PlotLandscape } from "@/lib/furniture";
 
-// ─── Premium Indian modern architecture material palette ──────────────────────
-// Modelled after contemporary Indian residential: lime-washed concrete,
-// smooth plaster, warm teak accents, clear low-E glass, stainless railings.
+// ─── Procedural texture helpers ───────────────────────────────────────────────
 
-const ROLE_COLOR: Record<MeshRole, string> = {
-  "exterior-wall":   "#F0EBE3",   // warm lime-washed concrete
-  "interior-wall":   "#F5F1EB",   // smooth white plaster
-  "floor-slab":      "#D8D4CC",   // polished concrete slab
-  "roof-slab":       "#C8C4BC",   // exposed concrete roof
-  "column":          "#ECE8DF",   // plastered column
-  "parapet":         "#E8E4DB",   // plastered parapet
-  "balcony-slab":    "#CECAC2",   // concrete balcony slab
-  "balcony-railing": "#C4C8CC",   // brushed stainless
-  "stair-tread":     "#D2CEC6",   // concrete tread
-  // Door parts
-  "door-frame":      "#7A4820",   // dark teak / rosewood frame
-  "door-panel":      "#9B5E2A",   // medium teak flush door leaf
-  "door-handle":     "#B8B0A6",   // brushed stainless lever
-  // Window parts
-  "window-frame":    "#D8D4CC",   // white powder-coated aluminium
-  "window-glass":    "#A8CBE4",   // clear low-E glass tint
-  "window-sill":     "#EAE4D6",   // polished granite / marble sill
+function makeCanvas(size: number): CanvasRenderingContext2D {
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  return c.getContext("2d")!;
+}
+
+/** Seeded LCG for repeatable pseudo-random per-texture variation */
+function lcg(seed: number) {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0xffffffff; };
+}
+
+// ─── Concrete texture ─────────────────────────────────────────────────────────
+// Light aggregate speckle + subtle mottling
+function concreteTexture(opts?: { tint?: string; dark?: boolean }): THREE.CanvasTexture {
+  const size = 512;
+  const ctx = makeCanvas(size);
+  const rand = lcg(opts?.dark ? 2 : 1);
+
+  // Base
+  const baseL = opts?.dark ? 158 : 218;
+  ctx.fillStyle = opts?.tint ?? (opts?.dark ? `rgb(${baseL},${baseL-4},${baseL-8})` : `rgb(${baseL},${baseL-2},${baseL-6})`);
+  ctx.fillRect(0, 0, size, size);
+
+  // Aggregate speckle
+  for (let i = 0; i < 3200; i++) {
+    const x = rand() * size;
+    const y = rand() * size;
+    const r = 0.8 + rand() * 2.2;
+    const brightness = 180 + Math.floor(rand() * 60) - (opts?.dark ? 20 : 0);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${brightness},${brightness - 4},${brightness - 8},${0.18 + rand() * 0.22})`;
+    ctx.fill();
+  }
+
+  // Mottling wash
+  for (let i = 0; i < 14; i++) {
+    const gx = rand() * size; const gy = rand() * size;
+    const gr = 40 + rand() * 80;
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+    const lv = opts?.dark ? 0 : Math.floor(rand() * 28) - 14;
+    g.addColorStop(0, `rgba(${baseL + lv},${baseL + lv},${baseL + lv - 4},0.08)`);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+  }
+
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+
+// ─── Normal map from height noise ────────────────────────────────────────────
+function noiseNormalMap(seed: number, strength = 0.45): THREE.CanvasTexture {
+  const size = 256;
+  const ctx = makeCanvas(size);
+  const rand = lcg(seed);
+  const h = new Float32Array(size * size);
+
+  // Generate height field with value noise
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let v = 0;
+      let amp = 1; let freq = 1 / 32;
+      for (let o = 0; o < 4; o++) {
+        v += (rand() - 0.5) * amp;
+        amp *= 0.5; freq *= 2;
+      }
+      h[y * size + x] = v;
+    }
+  }
+
+  const img = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const idx = y * size + x;
+      const r = (x + 1) % size; const l = (x - 1 + size) % size;
+      const u = (y - 1 + size) % size; const d = (y + 1) % size;
+      const dx = (h[y * size + r] - h[y * size + l]) * strength;
+      const dy = (h[u * size + x] - h[d * size + x]) * strength;
+      const len = Math.sqrt(dx * dx + dy * dy + 1);
+      const base = idx * 4;
+      img.data[base]     = Math.round((-dx / len * 0.5 + 0.5) * 255);
+      img.data[base + 1] = Math.round((-dy / len * 0.5 + 0.5) * 255);
+      img.data[base + 2] = Math.round((1  / len * 0.5 + 0.5) * 255);
+      img.data[base + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+
+// ─── Roughness map ────────────────────────────────────────────────────────────
+function roughnessMap(seed: number, base: number, variation = 0.12): THREE.CanvasTexture {
+  const size = 256;
+  const ctx = makeCanvas(size);
+  const rand = lcg(seed + 99);
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < size * size; i++) {
+    const v = Math.round(Math.max(0, Math.min(1, base + (rand() - 0.5) * variation * 2)) * 255);
+    img.data[i * 4]     = v;
+    img.data[i * 4 + 1] = v;
+    img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+
+// ─── Wood grain texture ───────────────────────────────────────────────────────
+function woodTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const ctx = makeCanvas(size);
+  const rand = lcg(42);
+
+  // Base warm teak
+  const base = ctx.createLinearGradient(0, 0, size, 0);
+  base.addColorStop(0,   "#7B4A22");
+  base.addColorStop(0.3, "#8C5528");
+  base.addColorStop(0.6, "#7A4820");
+  base.addColorStop(1,   "#8B5230");
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, size, size);
+
+  // Horizontal grain lines
+  for (let i = 0; i < 60; i++) {
+    const y0 = rand() * size;
+    const thick = 0.4 + rand() * 1.6;
+    const dark = rand() > 0.5;
+    ctx.strokeStyle = dark
+      ? `rgba(50,28,10,${0.06 + rand() * 0.10})`
+      : `rgba(180,110,60,${0.04 + rand() * 0.08})`;
+    ctx.lineWidth = thick;
+    ctx.beginPath();
+    let px = 0;
+    ctx.moveTo(0, y0);
+    while (px < size) {
+      const step = 12 + rand() * 24;
+      const jitter = (rand() - 0.5) * 3;
+      ctx.lineTo(px + step, y0 + jitter);
+      px += step;
+    }
+    ctx.stroke();
+  }
+
+  // Fine knot suggestion
+  for (let k = 0; k < 2; k++) {
+    const kx = rand() * size; const ky = rand() * size;
+    for (let ring = 0; ring < 8; ring++) {
+      const r = 4 + ring * 5;
+      ctx.beginPath();
+      ctx.ellipse(kx, ky, r * 1.6, r, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(50,24,8,${0.08 - ring * 0.008})`;
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 2);
+  return tex;
+}
+
+// ─── Wood normal map ──────────────────────────────────────────────────────────
+function woodNormalMap(): THREE.CanvasTexture {
+  return noiseNormalMap(77, 0.25);
+}
+
+// ─── Brushed metal texture ────────────────────────────────────────────────────
+function metalTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const ctx = makeCanvas(size);
+  const rand = lcg(13);
+
+  ctx.fillStyle = "#C0C4C8";
+  ctx.fillRect(0, 0, size, size);
+
+  // Horizontal brush lines
+  for (let i = 0; i < 180; i++) {
+    const y = rand() * size;
+    const bright = 165 + Math.floor(rand() * 80);
+    ctx.strokeStyle = `rgba(${bright},${bright + 2},${bright + 4},${0.12 + rand() * 0.18})`;
+    ctx.lineWidth = 0.4 + rand() * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(size, y + (rand() - 0.5) * 2);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 3);
+  return tex;
+}
+
+// ─── Grass texture ────────────────────────────────────────────────────────────
+function grassTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const ctx = makeCanvas(size);
+  const rand = lcg(99);
+
+  ctx.fillStyle = "#3D5A24";
+  ctx.fillRect(0, 0, size, size);
+
+  // Blade variation patches
+  for (let i = 0; i < 800; i++) {
+    const x = rand() * size; const y = rand() * size;
+    const r = 2 + rand() * 8;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const light = rand() > 0.5;
+    g.addColorStop(0, light ? "rgba(90,130,50,0.18)" : "rgba(20,38,10,0.14)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+  }
+
+  // Fine blade streaks
+  for (let i = 0; i < 600; i++) {
+    const x = rand() * size; const y = rand() * size;
+    ctx.strokeStyle = `rgba(${60 + Math.floor(rand() * 50)},${100 + Math.floor(rand() * 40)},${20 + Math.floor(rand() * 20)},0.15)`;
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + (rand() - 0.5) * 4, y - 6 - rand() * 8);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(6, 6);
+  return tex;
+}
+
+// ─── Concrete pavers texture ──────────────────────────────────────────────────
+function paversTexture(): THREE.CanvasTexture {
+  const size = 512;
+  const ctx = makeCanvas(size);
+  const rand = lcg(55);
+
+  ctx.fillStyle = "#C4BFB5";
+  ctx.fillRect(0, 0, size, size);
+
+  // Paver slabs
+  const cols = 4; const rows = 6;
+  const gapX = 3; const gapY = 3;
+  const pw = (size - gapX * (cols + 1)) / cols;
+  const ph = (size - gapY * (rows + 1)) / rows;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = gapX + c * (pw + gapX);
+      const y = gapY + r * (ph + gapY);
+      const variation = Math.floor(rand() * 20) - 10;
+      const base = 196 + variation;
+      ctx.fillStyle = `rgb(${base},${base - 3},${base - 6})`;
+      ctx.fillRect(x, y, pw, ph);
+
+      // Subtle aggregate on each paver
+      for (let i = 0; i < 30; i++) {
+        const sx = x + rand() * pw; const sy = y + rand() * ph;
+        const sr = 0.5 + rand() * 1.5;
+        const sv = 140 + Math.floor(rand() * 80);
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${sv},${sv},${sv - 4},0.12)`;
+        ctx.fill();
+      }
+    }
+  }
+
+  // Grout lines (gaps already show base color)
+  ctx.fillStyle = "#A8A29A";
+  for (let c = 0; c <= cols; c++) {
+    ctx.fillRect(c * (pw + gapX), 0, gapX, size);
+  }
+  for (let r = 0; r <= rows; r++) {
+    ctx.fillRect(0, r * (ph + gapY), size, gapY);
+  }
+
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 4);
+  return tex;
+}
+
+// ─── Glass texture (subtle smear) ────────────────────────────────────────────
+function glassTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const ctx = makeCanvas(size);
+  const rand = lcg(7);
+
+  ctx.fillStyle = "rgba(185, 215, 235, 0.15)";
+  ctx.fillRect(0, 0, size, size);
+
+  for (let i = 0; i < 12; i++) {
+    const x = rand() * size; const y = rand() * size;
+    const r = 20 + rand() * 40;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, "rgba(255,255,255,0.06)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
+  }
+
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// ─── Material spec per role ───────────────────────────────────────────────────
+type MatSpec = {
+  color: string;
+  roughness: number;
+  metalness: number;
+  opacity?: number;
+  // PBR extras
+  transmission?: number;
+  ior?: number;
+  reflectivity?: number;
+  envMapIntensity?: number;
+  textureKey?: "concrete" | "concreteDark" | "wood" | "metal" | "glass" | "pavers" | "grass";
+  normalKey?:   "concreteNorm" | "woodNorm" | "noiseNorm";
+  roughKey?:    "concreteRough" | "metalRough";
 };
 
-// Opacity — only glass is transparent
-const ROLE_OPACITY: Partial<Record<MeshRole, number>> = {
-  "window-glass": 0.28,
+const ROLE_MAT: Record<MeshRole, MatSpec> = {
+  "exterior-wall": {
+    color: "#E8E4DC", roughness: 0.92, metalness: 0,
+    textureKey: "concrete", normalKey: "concreteNorm", roughKey: "concreteRough",
+    envMapIntensity: 0.05,
+  },
+  "interior-wall": {
+    color: "#F2EEE8", roughness: 0.88, metalness: 0,
+    textureKey: "concrete", normalKey: "concreteNorm",
+    envMapIntensity: 0.04,
+  },
+  "floor-slab": {
+    color: "#D4D0C8", roughness: 0.85, metalness: 0,
+    textureKey: "concrete", normalKey: "concreteNorm", roughKey: "concreteRough",
+    envMapIntensity: 0.08,
+  },
+  "roof-slab": {
+    color: "#C8C4BC", roughness: 0.94, metalness: 0,
+    textureKey: "concreteDark", normalKey: "concreteNorm",
+    envMapIntensity: 0.03,
+  },
+  "column": {
+    color: "#DEDAD2", roughness: 0.90, metalness: 0,
+    textureKey: "concrete", normalKey: "concreteNorm",
+    envMapIntensity: 0.05,
+  },
+  "parapet": {
+    color: "#DCDAD2", roughness: 0.91, metalness: 0,
+    textureKey: "concrete", normalKey: "concreteNorm",
+    envMapIntensity: 0.04,
+  },
+  "balcony-slab": {
+    color: "#C8C4BC", roughness: 0.88, metalness: 0,
+    textureKey: "concreteDark", normalKey: "concreteNorm",
+    envMapIntensity: 0.06,
+  },
+  "balcony-railing": {
+    color: "#B8BCBE", roughness: 0.22, metalness: 0.88,
+    textureKey: "metal", roughKey: "metalRough",
+    envMapIntensity: 1.2,
+  },
+  "stair-tread": {
+    color: "#C8C4BC", roughness: 0.87, metalness: 0,
+    textureKey: "concrete", normalKey: "noiseNorm",
+    envMapIntensity: 0.04,
+  },
+  "door-frame": {
+    color: "#6E3E18", roughness: 0.72, metalness: 0,
+    textureKey: "wood", normalKey: "woodNorm",
+    envMapIntensity: 0.10,
+  },
+  "door-panel": {
+    color: "#7A4820", roughness: 0.62, metalness: 0,
+    textureKey: "wood", normalKey: "woodNorm",
+    envMapIntensity: 0.14,
+  },
+  "door-handle": {
+    color: "#C0B8B0", roughness: 0.18, metalness: 0.85,
+    textureKey: "metal",
+    envMapIntensity: 1.4,
+  },
+  "window-frame": {
+    color: "#C8C8C4", roughness: 0.24, metalness: 0.58,
+    textureKey: "metal", roughKey: "metalRough",
+    envMapIntensity: 0.90,
+  },
+  "window-glass": {
+    color: "#B8D4E8", roughness: 0.04, metalness: 0.08,
+    opacity: 0.22,
+    transmission: 0.88, ior: 1.52, reflectivity: 0.85,
+    textureKey: "glass",
+    envMapIntensity: 1.6,
+  },
+  "window-sill": {
+    color: "#D8D2C8", roughness: 0.38, metalness: 0.06,
+    textureKey: "concrete", normalKey: "noiseNorm",
+    envMapIntensity: 0.18,
+  },
 };
 
-// PBR roughness — concrete is matte, glass near-mirror, steel semi-specular
-const ROLE_ROUGHNESS: Partial<Record<MeshRole, number>> = {
-  "exterior-wall":   0.88,
-  "interior-wall":   0.78,
-  "floor-slab":      0.82,
-  "roof-slab":       0.92,
-  "column":          0.78,
-  "parapet":         0.88,
-  "balcony-slab":    0.84,
-  "balcony-railing": 0.24,
-  "stair-tread":     0.82,
-  // Door parts
-  "door-frame":      0.72,   // wood grain — slightly shinier than raw concrete
-  "door-panel":      0.60,   // lacquered flush door
-  "door-handle":     0.20,   // brushed stainless
-  // Window parts
-  "window-frame":    0.28,   // anodised aluminium
-  "window-glass":    0.03,   // near-mirror glass
-  "window-sill":     0.38,   // polished granite
-};
+// ─── Legend color per role (swatch) ──────────────────────────────────────────
+const ROLE_SWATCH: Record<MeshRole, string> = Object.fromEntries(
+  Object.entries(ROLE_MAT).map(([k, v]) => [k, v.color])
+) as Record<MeshRole, string>;
 
-// Metalness — only steel/glass/aluminium elements
-const ROLE_METALNESS: Partial<Record<MeshRole, number>> = {
-  "balcony-railing": 0.72,
-  // Door
-  "door-handle":     0.78,   // stainless lever
-  // Window
-  "window-frame":    0.52,   // anodised aluminium
-  "window-glass":    0.18,   // slight metallic tint on low-E glass
-  "window-sill":     0.04,   // subtle sheen on polished stone
-};
+// ─── Texture cache hook ───────────────────────────────────────────────────────
+function useTextures() {
+  return useMemo(() => ({
+    concrete:      concreteTexture(),
+    concreteDark:  concreteTexture({ dark: true }),
+    concreteNorm:  noiseNormalMap(1, 0.40),
+    concreteRough: roughnessMap(1, 0.91, 0.08),
+    woodTex:       woodTexture(),
+    woodNorm:      woodNormalMap(),
+    metalTex:      metalTexture(),
+    metalRough:    roughnessMap(13, 0.22, 0.06),
+    glassTex:      glassTexture(),
+    noiseNorm:     noiseNormalMap(44, 0.20),
+    pavers:        paversTexture(),
+    grass:         grassTexture(),
+  }), []);
+}
+
+// ─── PBR material resolver ────────────────────────────────────────────────────
+function PBRMesh({
+  spec,
+  textures,
+  wireframe,
+  dimOpacity,
+}: {
+  spec: BoxSpec;
+  textures: ReturnType<typeof useTextures>;
+  wireframe: boolean;
+  dimOpacity?: number;
+}) {
+  const mat = ROLE_MAT[spec.role];
+  const baseOpacity = mat.opacity ?? 1;
+  const opacity = dimOpacity !== undefined ? baseOpacity * dimOpacity : baseOpacity;
+  const transparent = opacity < 0.999 || (mat.transmission ?? 0) > 0;
+
+  // Map texture key → actual texture
+  const map = useMemo(() => {
+    switch (mat.textureKey) {
+      case "concrete":     return textures.concrete;
+      case "concreteDark": return textures.concreteDark;
+      case "wood":         return textures.woodTex;
+      case "metal":        return textures.metalTex;
+      case "glass":        return textures.glassTex;
+      case "pavers":       return textures.pavers;
+      case "grass":        return textures.grass;
+      default:             return null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mat.textureKey]);
+
+  const normalMap = useMemo(() => {
+    switch (mat.normalKey) {
+      case "concreteNorm": return textures.concreteNorm;
+      case "woodNorm":     return textures.woodNorm;
+      case "noiseNorm":    return textures.noiseNorm;
+      default:             return null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mat.normalKey]);
+
+  const roughMap = useMemo(() => {
+    switch (mat.roughKey) {
+      case "concreteRough": return textures.concreteRough;
+      case "metalRough":    return textures.metalRough;
+      default:              return null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mat.roughKey]);
+
+  const isGlass = (mat.transmission ?? 0) > 0;
+
+  return (
+    <mesh
+      position={[spec.cx, spec.cy, spec.cz]}
+      rotation={[0, spec.ry, 0]}
+      castShadow={!isGlass}
+      receiveShadow
+    >
+      <boxGeometry args={[spec.w, spec.h, spec.d]} />
+      {isGlass ? (
+        // @ts-ignore — MeshPhysicalMaterial props differ between R3F versions
+        <meshPhysicalMaterial
+          color={mat.color}
+          roughness={mat.roughness}
+          metalness={mat.metalness}
+          transmission={mat.transmission}
+          ior={mat.ior ?? 1.5}
+          reflectivity={mat.reflectivity ?? 0.5}
+          opacity={opacity}
+          transparent={transparent}
+          envMapIntensity={mat.envMapIntensity ?? 1.0}
+          map={map}
+          wireframe={false}
+        />
+      ) : (
+        <meshStandardMaterial
+          color={mat.color}
+          roughness={mat.roughness}
+          metalness={mat.metalness}
+          opacity={opacity}
+          transparent={transparent}
+          envMapIntensity={mat.envMapIntensity ?? 0.2}
+          map={map ?? undefined}
+          normalMap={normalMap ?? undefined}
+          normalScale={new THREE.Vector2(0.6, 0.6)}
+          roughnessMap={roughMap ?? undefined}
+          wireframe={wireframe && !transparent}
+        />
+      )}
+    </mesh>
+  );
+}
 
 // ─── View presets ─────────────────────────────────────────────────────────────
 export type ViewPreset = "iso" | "top" | "dollhouse" | "exploded" | "isolated";
@@ -109,49 +580,12 @@ function presetCamera(
         target: new THREE.Vector3(cx, midY, cz),
       };
     }
-    default: // iso
+    default:
       return {
         pos:    new THREE.Vector3(cx + d * 0.70, cy + d * 0.65, cz + d * 0.70),
         target: new THREE.Vector3(cx, cy * 0.35, cz),
       };
   }
-}
-
-// ─── Single structural mesh ───────────────────────────────────────────────────
-function SceneMesh({
-  spec,
-  wireframe,
-  dimOpacity,
-}: {
-  spec: BoxSpec;
-  wireframe: boolean;
-  dimOpacity?: number;
-}) {
-  const base      = ROLE_OPACITY[spec.role] ?? 1;
-  const opacity   = dimOpacity !== undefined ? base * dimOpacity : base;
-  const rough     = ROLE_ROUGHNESS[spec.role] ?? 0.78;
-  const metal     = ROLE_METALNESS[spec.role] ?? 0;
-  const transp    = opacity < 0.99;
-
-  return (
-    <mesh
-      position={[spec.cx, spec.cy, spec.cz]}
-      rotation={[0, spec.ry, 0]}
-      castShadow
-      receiveShadow
-    >
-      <boxGeometry args={[spec.w, spec.h, spec.d]} />
-      <meshStandardMaterial
-        color={ROLE_COLOR[spec.role]}
-        roughness={rough}
-        metalness={metal}
-        opacity={opacity}
-        transparent={transp}
-        wireframe={wireframe && !transp}
-        envMapIntensity={metal > 0.3 ? 0.8 : 0.2}
-      />
-    </mesh>
-  );
 }
 
 // ─── Camera controller ────────────────────────────────────────────────────────
@@ -223,12 +657,14 @@ function FloorGroups({
   isoFloor,
   wireframe,
   showFurniture,
+  textures,
 }: {
   scene: SceneData;
   preset: ViewPreset;
   isoFloor: number;
   wireframe: boolean;
   showFurniture: boolean;
+  textures: ReturnType<typeof useTextures>;
 }) {
   const byFloor = useMemo<Map<number, BoxSpec[]>>(() => {
     const m = new Map<number, BoxSpec[]>();
@@ -261,9 +697,10 @@ function FloorGroups({
             {meshes.map(spec => {
               if (hideRoof && (spec.role === "roof-slab" || spec.role === "parapet")) return null;
               return (
-                <SceneMesh
+                <PBRMesh
                   key={spec.id}
                   spec={spec}
+                  textures={textures}
                   wireframe={wireframe}
                   dimOpacity={dimmed ? 0.10 : undefined}
                 />
@@ -282,22 +719,18 @@ function FloorGroups({
 }
 
 // ─── Lighting — warm Indian afternoon (~4 pm) ─────────────────────────────────
-// Primary: warm golden sun from NW (high elevation)
-// Fill:    cool blue sky light from SE
-// Bounce:  subtle warm ground-reflected fill
-// Hemi:    gradient sky-to-earth ambient
 function Lighting({ scene }: { scene: SceneData }) {
   const d = scene.diagonal;
   const [cx, , cz] = scene.center;
   return (
     <>
-      <ambientLight color="#FFF6EC" intensity={0.35} />
+      <ambientLight color="#FFF6EC" intensity={0.30} />
 
-      {/* Primary sun — warm golden, NW high (casts long architectural shadows) */}
+      {/* Primary sun — warm golden, NW high */}
       <directionalLight
         color="#FFE08A"
         position={[cx + d * 1.1, d * 1.7, cz - d * 0.4]}
-        intensity={2.5}
+        intensity={2.2}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -310,61 +743,81 @@ function Lighting({ scene }: { scene: SceneData }) {
         shadow-normalBias={0.025}
       />
 
-      {/* Sky fill — cool blue from the opposite side */}
+      {/* Sky fill — cool blue from opposite side */}
       <directionalLight
         color="#C0D4F0"
         position={[cx - d * 0.7, d * 0.5, cz + d * 0.9]}
-        intensity={0.42}
+        intensity={0.38}
       />
 
-      {/* Bounce fill — warm ground light (Indian concrete/soil bounce) */}
+      {/* Bounce fill — warm ground */}
       <directionalLight
         color="#E8C890"
         position={[cx, -d * 0.2, cz]}
-        intensity={0.18}
+        intensity={0.16}
       />
 
-      {/* Hemisphere — sky/ground gradient for overall atmosphere */}
-      <hemisphereLight args={["#B8CCE4", "#C8A870", 0.60]} />
+      {/* Hemisphere sky/ground gradient */}
+      <hemisphereLight args={["#B0C8E4", "#C0A060", 0.55]} />
     </>
   );
 }
 
-// ─── Ground — layered: green lawn + concrete plot paving ──────────────────────
-function Ground({ scene }: { scene: SceneData }) {
+// ─── Ground — textured grass + concrete pavers ────────────────────────────────
+function Ground({ scene, textures }: { scene: SceneData; textures: ReturnType<typeof useTextures> }) {
   const { plotWidth: pw, plotDepth: pd } = scene;
   const extend = Math.max(pw, pd) * 1.8;
 
   return (
     <group>
-      {/* Green lawn extending beyond plot boundary */}
+      {/* Green lawn */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[pw / 2, -0.004, pd / 2]}
         receiveShadow
       >
         <planeGeometry args={[pw + extend * 2, pd + extend * 2]} />
-        <meshStandardMaterial color="#4A6630" roughness={0.96} metalness={0} />
+        <meshStandardMaterial
+          color="#3A5520"
+          map={textures.grass}
+          roughness={0.97}
+          metalness={0}
+          envMapIntensity={0.04}
+        />
       </mesh>
 
-      {/* Plot paving / concrete hardstanding within the plot footprint */}
+      {/* Plot paving — concrete pavers */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[pw / 2, -0.001, pd / 2]}
         receiveShadow
       >
         <planeGeometry args={[pw, pd]} />
-        <meshStandardMaterial color="#C8C4BC" roughness={0.90} metalness={0} />
+        <meshStandardMaterial
+          color="#C2BDB2"
+          map={textures.pavers}
+          normalMap={textures.noiseNorm}
+          normalScale={new THREE.Vector2(0.3, 0.3)}
+          roughness={0.88}
+          metalness={0}
+          envMapIntensity={0.06}
+        />
       </mesh>
 
-      {/* Narrow road strip in front of the plot */}
+      {/* Road strip */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[pw / 2, -0.002, -1.5]}
         receiveShadow
       >
         <planeGeometry args={[pw + extend * 2, 3.0]} />
-        <meshStandardMaterial color="#888480" roughness={0.94} metalness={0} />
+        <meshStandardMaterial
+          color="#7A7670"
+          map={textures.concreteDark}
+          roughness={0.95}
+          metalness={0}
+          envMapIntensity={0.03}
+        />
       </mesh>
     </group>
   );
@@ -377,45 +830,44 @@ function BuildingScene({
   isoFloor,
   wireframe,
   showFurniture,
+  textures,
 }: {
   scene: SceneData;
   preset: ViewPreset;
   isoFloor: number;
   wireframe: boolean;
   showFurniture: boolean;
+  textures: ReturnType<typeof useTextures>;
 }) {
   return (
     <>
       <CameraController preset={preset} scene={scene} isoFloor={isoFloor} />
       <Lighting scene={scene} />
+      {/* Sunset/overcast env map for reflections on metal & glass */}
+      <Environment preset="city" background={false} />
       <FloorGroups
         scene={scene}
         preset={preset}
         isoFloor={isoFloor}
         wireframe={wireframe}
         showFurniture={showFurniture}
+        textures={textures}
       />
       {showFurniture && (
         <Suspense fallback={null}>
           <PlotLandscape plotWidth={scene.plotWidth} plotDepth={scene.plotDepth} />
         </Suspense>
       )}
-      <Ground scene={scene} />
+      <Ground scene={scene} textures={textures} />
     </>
   );
 }
 
 // ─── Toolbar button ───────────────────────────────────────────────────────────
 function PresetBtn({
-  active,
-  label,
-  onClick,
-  title,
+  active, label, onClick, title,
 }: {
-  active: boolean;
-  label: React.ReactNode;
-  onClick: () => void;
-  title: string;
+  active: boolean; label: React.ReactNode; onClick: () => void; title: string;
 }) {
   return (
     <button
@@ -437,56 +889,47 @@ function PresetBtn({
 // ─── SVG icons ────────────────────────────────────────────────────────────────
 const IconTop = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="9" />
-    <line x1="12" y1="3" x2="12" y2="21" />
-    <line x1="3" y1="12" x2="21" y2="12" />
+    <circle cx="12" cy="12" r="9" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="3" y1="12" x2="21" y2="12" />
   </svg>
 );
 const IconIso = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" />
-    <line x1="12" y1="2" x2="12" y2="22" />
-    <line x1="2" y1="9" x2="22" y2="9" />
+    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" /><line x1="12" y1="2" x2="12" y2="22" /><line x1="2" y1="9" x2="22" y2="9" />
   </svg>
 );
 const IconDoll = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 9l9-7 9 7v11H3Z" />
-    <line x1="3" y1="14" x2="21" y2="14" />
-    <line x1="9" y1="21" x2="9" y2="14" />
-    <line x1="15" y1="21" x2="15" y2="14" />
+    <path d="M3 9l9-7 9 7v11H3Z" /><line x1="3" y1="14" x2="21" y2="14" /><line x1="9" y1="21" x2="9" y2="14" /><line x1="15" y1="21" x2="15" y2="14" />
   </svg>
 );
 const IconExplode = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="3" width="18" height="4" rx="1" />
-    <rect x="3" y="10" width="18" height="4" rx="1" />
-    <rect x="3" y="17" width="18" height="4" rx="1" />
+    <rect x="3" y="3" width="18" height="4" rx="1" /><rect x="3" y="10" width="18" height="4" rx="1" /><rect x="3" y="17" width="18" height="4" rx="1" />
   </svg>
 );
 const IconFloor = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="2" y="7" width="20" height="10" rx="2" />
-    <line x1="2" y1="12" x2="22" y2="12" />
-    <line x1="7" y1="7" x2="7" y2="17" />
+    <rect x="2" y="7" width="20" height="10" rx="2" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="7" y1="7" x2="7" y2="17" />
   </svg>
 );
 const IconWire = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" />
-    <path d="M2 9l10 7 10-7" strokeDasharray="3 2" />
-    <line x1="12" y1="16" x2="12" y2="22" strokeDasharray="3 2" />
+    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" /><path d="M2 9l10 7 10-7" strokeDasharray="3 2" /><line x1="12" y1="16" x2="12" y2="22" strokeDasharray="3 2" />
   </svg>
 );
 const IconSofa = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 10v7h20v-7" />
-    <path d="M2 14h20" />
-    <path d="M2 10a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3" />
-    <line x1="5" y1="17" x2="5" y2="20" />
-    <line x1="19" y1="17" x2="19" y2="20" />
+    <path d="M2 10v7h20v-7" /><path d="M2 14h20" /><path d="M2 10a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3" /><line x1="5" y1="17" x2="5" y2="20" /><line x1="19" y1="17" x2="19" y2="20" />
   </svg>
 );
+
+// ─── Legend labels ────────────────────────────────────────────────────────────
+const LEGEND_ROLES: MeshRole[] = [
+  "exterior-wall","interior-wall","floor-slab","roof-slab",
+  "column","parapet","balcony-slab","balcony-railing",
+  "stair-tread","door-frame","door-panel","door-handle",
+  "window-frame","window-glass","window-sill",
+];
 
 // ─── Main exported component ──────────────────────────────────────────────────
 interface ThreeViewerProps { scene: SceneData }
@@ -496,6 +939,8 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
   const [isoFloor, setIsoFloor]       = useState(0);
   const [wireframe, setWireframe]     = useState(false);
   const [showFurniture, setFurniture] = useState(true);
+
+  const textures = useTextures();
 
   const initPos = useMemo<[number, number, number]>(() => {
     const [cx, , cz] = scene.center;
@@ -511,16 +956,15 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
     f === 0 ? "G" : f === scene.floors ? "Rf" : `F${f}`;
 
   const presets: Array<{ id: ViewPreset; label: React.ReactNode; title: string }> = [
-    { id: "iso",       label: <><IconIso />Isometric</>,   title: "Isometric view" },
-    { id: "top",       label: <><IconTop />Top View</>,    title: "Orthographic top-down" },
-    { id: "dollhouse", label: <><IconDoll />Dollhouse</>,  title: "Dollhouse (roof hidden)" },
+    { id: "iso",       label: <><IconIso />Isometric</>,    title: "Isometric view" },
+    { id: "top",       label: <><IconTop />Top View</>,     title: "Orthographic top-down" },
+    { id: "dollhouse", label: <><IconDoll />Dollhouse</>,   title: "Dollhouse (roof hidden)" },
     { id: "exploded",  label: <><IconExplode />Exploded</>, title: "Exploded floors" },
-    { id: "isolated",  label: <><IconFloor />Isolate</>,   title: "Isolate one floor" },
+    { id: "isolated",  label: <><IconFloor />Isolate</>,    title: "Isolate one floor" },
   ];
 
-  // Toolbar chrome: dark charcoal (premium neutral, not green)
-  const TB = "#18181B";   // toolbar bg
-  const TBB = "#27272A";  // toolbar border
+  const TB = "#18181B";
+  const TBB = "#27272A";
 
   return (
     <div className="relative w-full h-full flex flex-col" style={{ background: "#F0EDE8" }}>
@@ -530,22 +974,14 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
         className="shrink-0 flex items-center gap-2 px-3 py-2 overflow-x-auto"
         style={{ background: TB, borderBottom: `1px solid ${TBB}` }}
       >
-        {/* Preset buttons */}
         <div className="flex items-center gap-1.5 mr-1">
           {presets.map(p => (
-            <PresetBtn
-              key={p.id}
-              active={preset === p.id}
-              label={p.label}
-              title={p.title}
-              onClick={() => setPreset(p.id)}
-            />
+            <PresetBtn key={p.id} active={preset === p.id} label={p.label} title={p.title} onClick={() => setPreset(p.id)} />
           ))}
         </div>
 
         <div className="w-px h-8 shrink-0" style={{ background: TBB }} />
 
-        {/* Floor badges */}
         <div className="flex items-center gap-1">
           <span className="text-[9px] font-semibold uppercase tracking-wide mr-0.5" style={{ color: "#5A6A78" }}>
             Floor
@@ -556,11 +992,7 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
               onClick={() => { setIsoFloor(f); if (preset !== "isolated") setPreset("isolated"); }}
               className="w-8 h-7 rounded text-[11px] font-bold transition-all"
               style={{
-                background: preset === "isolated" && isoFloor === f
-                  ? "#E09040"
-                  : preset === "isolated"
-                    ? "#27272A"
-                    : "rgba(255,255,255,0.05)",
+                background: preset === "isolated" && isoFloor === f ? "#E09040" : preset === "isolated" ? "#27272A" : "rgba(255,255,255,0.05)",
                 color:  preset === "isolated" && isoFloor === f ? "#FFF" : "#7A8A98",
                 border: `1px solid ${preset === "isolated" && isoFloor === f ? "#E09040" : TBB}`,
               }}
@@ -572,36 +1004,23 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
 
         <div className="w-px h-8 shrink-0" style={{ background: TBB }} />
 
-        {/* Toggles */}
-        <PresetBtn
-          active={showFurniture}
-          label={<><IconSofa />Furniture</>}
-          title="Toggle furniture & landscape"
-          onClick={() => setFurniture(v => !v)}
-        />
-        <PresetBtn
-          active={wireframe}
-          label={<><IconWire />Wireframe</>}
-          title="Wireframe overlay"
-          onClick={() => setWireframe(v => !v)}
-        />
+        <PresetBtn active={showFurniture} label={<><IconSofa />Furniture</>} title="Toggle furniture & landscape" onClick={() => setFurniture(v => !v)} />
+        <PresetBtn active={wireframe}     label={<><IconWire />Wireframe</>}  title="Wireframe overlay"            onClick={() => setWireframe(v => !v)} />
 
-        {/* Stats */}
         <div className="ml-auto text-[10px]" style={{ color: "#4A5A68" }}>
           {scene.meshes.length} meshes · {scene.rooms.length} rooms
         </div>
       </div>
 
-      {/* ── 3D Canvas — warm architectural visualization background ─────────── */}
+      {/* ── 3D Canvas ────────────────────────────────────────────────────────── */}
       <div className="flex-1 w-full">
         <Canvas
           shadows={{ type: THREE.PCFSoftShadowMap }}
-          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.05 }}
+          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.08 }}
           camera={{ position: initPos, fov: 46, near: 0.1, far: 8000 }}
           style={{ background: "#E8EEF4" }}
           resize={{ debounce: 0, scroll: false }}
         >
-          {/* Set WebGL clear colour — CSS style prop does NOT reach the renderer */}
           <color attach="background" args={["#E8EEF4"]} />
           <fog attach="fog" args={["#E8EEF4", scene.diagonal * 4, scene.diagonal * 10]} />
           <Suspense fallback={null}>
@@ -611,12 +1030,13 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
               isoFloor={isoFloor}
               wireframe={wireframe}
               showFurniture={showFurniture}
+              textures={textures}
             />
           </Suspense>
         </Canvas>
       </div>
 
-      {/* ── Interaction hint ────────────────────────────────────────────────── */}
+      {/* ── Interaction hint ──────────────────────────────────────────────────── */}
       <div
         className="absolute bottom-3 right-3 text-[9px] leading-relaxed pointer-events-none"
         style={{ color: "rgba(60,50,40,0.38)" }}
@@ -624,7 +1044,7 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
         Drag · Scroll · Right-drag to pan
       </div>
 
-      {/* ── Material legend ─────────────────────────────────────────────────── */}
+      {/* ── Material legend ───────────────────────────────────────────────────── */}
       <div
         className="absolute bottom-3 left-3 rounded-xl p-2.5 backdrop-blur-sm"
         style={{
@@ -637,20 +1057,13 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           Materials
         </div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-          {(
-            [
-              "exterior-wall","interior-wall","floor-slab","roof-slab",
-              "column","parapet","balcony-slab","balcony-railing",
-              "stair-tread","door-frame","door-panel","door-handle",
-              "window-frame","window-glass","window-sill",
-            ] as MeshRole[]
-          ).map(role => (
+          {LEGEND_ROLES.map(role => (
             <div key={role} className="flex items-center gap-1.5">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
                 style={{
-                  background: ROLE_COLOR[role],
-                  opacity: ROLE_OPACITY[role] ?? 1,
+                  background: ROLE_SWATCH[role],
+                  opacity: ROLE_MAT[role].opacity ?? 1,
                   border: "0.5px solid rgba(0,0,0,0.08)",
                 }}
               />
