@@ -168,19 +168,83 @@ function glassTexture(): THREE.CanvasTexture {
 function grassTexture(size = 512): THREE.CanvasTexture {
   const ctx = makeCanvas(size);
   const rand = lcg(99);
-  ctx.fillStyle = "#3D5A24"; ctx.fillRect(0, 0, size, size);
-  const patches = Math.round(800 * (size / 512) ** 2);
+  ctx.fillStyle = "#4A6428"; ctx.fillRect(0, 0, size, size);
+  const patches = Math.round(1200 * (size / 512) ** 2);
   for (let i = 0; i < patches; i++) {
-    const x = rand() * size, y = rand() * size, r = 2 + rand() * 8;
+    const x = rand() * size, y = rand() * size, r = 2 + rand() * 10;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    const light = rand() > 0.5;
-    g.addColorStop(0, light ? "rgba(90,130,50,0.18)" : "rgba(20,38,10,0.14)");
-    g.addColorStop(1, "rgba(0,0,0,0)");
+    const t = rand();
+    if (t > 0.65) {
+      g.addColorStop(0, "rgba(110,155,55,0.22)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    } else if (t > 0.35) {
+      g.addColorStop(0, "rgba(30,55,12,0.18)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    } else {
+      g.addColorStop(0, "rgba(70,110,38,0.16)"); g.addColorStop(1, "rgba(0,0,0,0)");
+    }
     ctx.fillStyle = g; ctx.fillRect(0, 0, size, size);
   }
   const tex = new THREE.CanvasTexture(ctx.canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(6, 6);
+  tex.repeat.set(8, 8);
+  return tex;
+}
+
+function stuccoTexture(size = 512): THREE.CanvasTexture {
+  const ctx = makeCanvas(size);
+  const rand = lcg(303);
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < size * size; i++) {
+    const n = rand();
+    const v = Math.round(226 + (n - 0.5) * 22);
+    img.data[i * 4]     = v;
+    img.data[i * 4 + 1] = v - 4;
+    img.data[i * 4 + 2] = v - 9;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  for (let i = 0; i < 60; i++) {
+    const sy = rand() * size, len = 40 + rand() * 100;
+    const bright = Math.round(195 + rand() * 30);
+    ctx.strokeStyle = `rgba(${bright},${bright - 3},${bright - 7},${0.04 + rand() * 0.07})`;
+    ctx.lineWidth = 0.3 + rand() * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(rand() * size, sy);
+    ctx.lineTo(rand() * size + (rand() - 0.5) * 20, sy + (rand() - 0.5) * 8);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  return tex;
+}
+
+function tileSlabTexture(size = 512): THREE.CanvasTexture {
+  const ctx = makeCanvas(size);
+  const rand = lcg(175);
+  ctx.fillStyle = "#C8C0B0"; ctx.fillRect(0, 0, size, size);
+  const cols = 3, rows = 3, gap = 6;
+  const tw = (size - gap * (cols + 1)) / cols;
+  const th = (size - gap * (rows + 1)) / rows;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = gap + c * (tw + gap), y = gap + r * (th + gap);
+      const base = 200 + Math.floor(rand() * 18) - 9;
+      ctx.fillStyle = `rgb(${base},${base - 2},${base - 6})`; ctx.fillRect(x, y, tw, th);
+      for (let v = 0; v < 3; v++) {
+        if (rand() > 0.5) {
+          ctx.strokeStyle = `rgba(155,145,130,${0.03 + rand() * 0.05})`;
+          ctx.lineWidth = 0.3 + rand() * 0.7;
+          ctx.beginPath();
+          ctx.moveTo(x + rand() * tw, y + rand() * th);
+          ctx.lineTo(x + rand() * tw, y + rand() * th);
+          ctx.stroke();
+        }
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(ctx.canvas);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
   return tex;
 }
 
@@ -224,6 +288,8 @@ type Textures = {
   noiseNorm: THREE.CanvasTexture;
   pavers: THREE.CanvasTexture;
   grass: THREE.CanvasTexture;
+  stucco: THREE.CanvasTexture;
+  tileSlab: THREE.CanvasTexture;
 };
 
 // ─── Module-level texture singleton ──────────────────────────────────────────
@@ -236,16 +302,18 @@ function buildTextures(mobile = false): Textures {
   return {
     concrete:      concreteTexture({ size: ts }),
     concreteDark:  concreteTexture({ dark: true, size: ts }),
-    concreteNorm:  noiseNormalMap(1, 0.40, ns),
-    concreteRough: roughnessMap(1, 0.91, 0.08, ns),
+    concreteNorm:  noiseNormalMap(1, 0.35, ns),
+    concreteRough: roughnessMap(1, 0.88, 0.07, ns),
     woodTex:       woodTexture(ts),
-    woodNorm:      noiseNormalMap(77, 0.25, ns),
+    woodNorm:      noiseNormalMap(77, 0.28, ns),
     metalTex:      metalTexture(ns),
-    metalRough:    roughnessMap(13, 0.22, 0.06, ns),
+    metalRough:    roughnessMap(13, 0.18, 0.05, ns),
     glassTex:      glassTexture(),
-    noiseNorm:     noiseNormalMap(44, 0.20, ns),
+    noiseNorm:     noiseNormalMap(44, 0.18, ns),
     pavers:        paversTexture(ts),
     grass:         grassTexture(ts),
+    stucco:        stuccoTexture(ts),
+    tileSlab:      tileSlabTexture(ts),
   };
 }
 
@@ -268,27 +336,27 @@ type MatSpec = {
   ior?: number;
   reflectivity?: number;
   envMapIntensity?: number;
-  textureKey?: "concrete" | "concreteDark" | "wood" | "metal" | "glass" | "pavers" | "grass";
+  textureKey?: "concrete" | "concreteDark" | "wood" | "metal" | "glass" | "pavers" | "grass" | "stucco" | "tileSlab";
   normalKey?:   "concreteNorm" | "woodNorm" | "noiseNorm";
   roughKey?:    "concreteRough" | "metalRough";
 };
 
 const ROLE_MAT: Record<MeshRole, MatSpec> = {
-  "exterior-wall":    { color: "#E8E4DC", roughness: 0.92, metalness: 0, textureKey: "concrete", normalKey: "concreteNorm", roughKey: "concreteRough", envMapIntensity: 0.05 },
-  "interior-wall":    { color: "#F2EEE8", roughness: 0.88, metalness: 0, textureKey: "concrete", normalKey: "concreteNorm", envMapIntensity: 0.04 },
-  "floor-slab":       { color: "#D4D0C8", roughness: 0.85, metalness: 0, textureKey: "concrete", normalKey: "concreteNorm", roughKey: "concreteRough", envMapIntensity: 0.08 },
-  "roof-slab":        { color: "#C8C4BC", roughness: 0.94, metalness: 0, textureKey: "concreteDark", normalKey: "concreteNorm", envMapIntensity: 0.03 },
-  "column":           { color: "#DEDAD2", roughness: 0.90, metalness: 0, textureKey: "concrete", normalKey: "concreteNorm", envMapIntensity: 0.05 },
-  "parapet":          { color: "#DCDAD2", roughness: 0.91, metalness: 0, textureKey: "concrete", normalKey: "concreteNorm", envMapIntensity: 0.04 },
-  "balcony-slab":     { color: "#C8C4BC", roughness: 0.88, metalness: 0, textureKey: "concreteDark", normalKey: "concreteNorm", envMapIntensity: 0.06 },
-  "balcony-railing":  { color: "#B8BCBE", roughness: 0.22, metalness: 0.88, textureKey: "metal", roughKey: "metalRough", envMapIntensity: 1.2 },
-  "stair-tread":      { color: "#C8C4BC", roughness: 0.87, metalness: 0, textureKey: "concrete", normalKey: "noiseNorm", envMapIntensity: 0.04 },
-  "door-frame":       { color: "#6E3E18", roughness: 0.72, metalness: 0, textureKey: "wood", normalKey: "woodNorm", envMapIntensity: 0.10 },
-  "door-panel":       { color: "#7A4820", roughness: 0.62, metalness: 0, textureKey: "wood", normalKey: "woodNorm", envMapIntensity: 0.14 },
-  "door-handle":      { color: "#C0B8B0", roughness: 0.18, metalness: 0.85, textureKey: "metal", envMapIntensity: 1.4 },
-  "window-frame":     { color: "#C8C8C4", roughness: 0.24, metalness: 0.58, textureKey: "metal", roughKey: "metalRough", envMapIntensity: 0.90 },
-  "window-glass":     { color: "#B8D4E8", roughness: 0.04, metalness: 0.08, opacity: 0.22, transmission: 0.88, ior: 1.52, reflectivity: 0.85, textureKey: "glass", envMapIntensity: 1.6 },
-  "window-sill":      { color: "#D8D2C8", roughness: 0.38, metalness: 0.06, textureKey: "concrete", normalKey: "noiseNorm", envMapIntensity: 0.18 },
+  "exterior-wall":    { color: "#EAE4D8", roughness: 0.90, metalness: 0, textureKey: "stucco",       normalKey: "concreteNorm", roughKey: "concreteRough", envMapIntensity: 0.08 },
+  "interior-wall":    { color: "#F5F0E8", roughness: 0.86, metalness: 0, textureKey: "concrete",     normalKey: "concreteNorm", envMapIntensity: 0.05 },
+  "floor-slab":       { color: "#D0C8BC", roughness: 0.80, metalness: 0, textureKey: "tileSlab",     normalKey: "noiseNorm",    roughKey: "concreteRough", envMapIntensity: 0.12 },
+  "roof-slab":        { color: "#B4B0A8", roughness: 0.93, metalness: 0, textureKey: "concreteDark", normalKey: "concreteNorm", envMapIntensity: 0.04 },
+  "column":           { color: "#E8E2D8", roughness: 0.88, metalness: 0, textureKey: "stucco",       normalKey: "concreteNorm", envMapIntensity: 0.07 },
+  "parapet":          { color: "#E0DCD4", roughness: 0.89, metalness: 0, textureKey: "stucco",       normalKey: "concreteNorm", envMapIntensity: 0.06 },
+  "balcony-slab":     { color: "#C4C0B8", roughness: 0.86, metalness: 0, textureKey: "concreteDark", normalKey: "concreteNorm", envMapIntensity: 0.07 },
+  "balcony-railing":  { color: "#D0D4D8", roughness: 0.18, metalness: 0.82, textureKey: "metal",    roughKey: "metalRough",    envMapIntensity: 1.40 },
+  "stair-tread":      { color: "#C8C4B8", roughness: 0.85, metalness: 0, textureKey: "tileSlab",     normalKey: "noiseNorm",    envMapIntensity: 0.06 },
+  "door-frame":       { color: "#5C3010", roughness: 0.70, metalness: 0, textureKey: "wood",         normalKey: "woodNorm",     envMapIntensity: 0.14 },
+  "door-panel":       { color: "#7A5028", roughness: 0.58, metalness: 0, textureKey: "wood",         normalKey: "woodNorm",     envMapIntensity: 0.20 },
+  "door-handle":      { color: "#D4C090", roughness: 0.14, metalness: 0.92, textureKey: "metal",    envMapIntensity: 1.80 },
+  "window-frame":     { color: "#E0E0DC", roughness: 0.20, metalness: 0.65, textureKey: "metal",    roughKey: "metalRough",    envMapIntensity: 1.10 },
+  "window-glass":     { color: "#9EC8DC", roughness: 0.03, metalness: 0.10, opacity: 0.18, transmission: 0.90, ior: 1.52, reflectivity: 0.90, textureKey: "glass", envMapIntensity: 2.0 },
+  "window-sill":      { color: "#E0D8CC", roughness: 0.32, metalness: 0.04, textureKey: "stucco",   normalKey: "noiseNorm",    envMapIntensity: 0.20 },
 };
 
 const ROLE_SWATCH: Record<MeshRole, string> = Object.fromEntries(
@@ -311,6 +379,8 @@ function makeMaterial(role: MeshRole, textures: Textures): THREE.MeshStandardMat
       case "glass":        return textures.glassTex;
       case "pavers":       return textures.pavers;
       case "grass":        return textures.grass;
+      case "stucco":       return textures.stucco;
+      case "tileSlab":     return textures.tileSlab;
       default:             return null;
     }
   })();
@@ -877,26 +947,31 @@ function Lighting({ scene, shadowMapSize }: { scene: SceneData; shadowMapSize: n
   const [cx, , cz] = scene.center;
   return (
     <>
-      <ambientLight color="#F8F4EE" intensity={0.22} />
+      {/* Soft ambient — slightly warm */}
+      <ambientLight color="#F2EDE4" intensity={0.18} />
+      {/* Primary sun — warm afternoon (high elevation, WSW azimuth) */}
       <directionalLight
-        color="#FFE8B0"
-        position={[cx + d * 1.3, d * 2.0, cz + d * 0.5]}
-        intensity={1.45}
+        color="#FFE9B8"
+        position={[cx + d * 1.5, d * 2.2, cz - d * 0.4]}
+        intensity={1.80}
         castShadow
         shadow-mapSize-width={shadowMapSize}
         shadow-mapSize-height={shadowMapSize}
-        shadow-camera-far={d * 12}
-        shadow-camera-left={-d * 3.0}
-        shadow-camera-right={d * 3.0}
-        shadow-camera-top={d * 4.5}
-        shadow-camera-bottom={-d * 2.5}
-        shadow-bias={-0.0002}
-        shadow-normalBias={0.02}
-        shadow-radius={8}
+        shadow-camera-far={d * 14}
+        shadow-camera-left={-d * 3.2}
+        shadow-camera-right={d * 3.2}
+        shadow-camera-top={d * 4.8}
+        shadow-camera-bottom={-d * 2.8}
+        shadow-bias={-0.0003}
+        shadow-normalBias={0.025}
+        shadow-radius={10}
       />
-      <directionalLight color="#BDD4F0" position={[cx - d * 1.0, d * 0.6, cz - d * 0.7]} intensity={0.32} />
-      <directionalLight color="#F0DEB8" position={[cx + d * 0.2, -d * 0.3, cz + d * 0.4]} intensity={0.10} />
-      <hemisphereLight args={["#C8DCF4", "#D4C4A0", 0.48]} />
+      {/* Cool sky fill — from opposite side + slightly low (bounced sky) */}
+      <directionalLight color="#B8D0F4" position={[cx - d * 1.2, d * 0.5, cz + d * 0.9]} intensity={0.28} />
+      {/* Warm ground bounce */}
+      <directionalLight color="#F0DDB4" position={[cx, -d * 0.5, cz]} intensity={0.12} />
+      {/* Sky hemisphere: rich blue sky / warm earth */}
+      <hemisphereLight args={["#A8C8F0", "#C8A870", 0.55]} />
     </>
   );
 }
@@ -904,24 +979,35 @@ function Lighting({ scene, shadowMapSize }: { scene: SceneData; shadowMapSize: n
 // ─── Ground ───────────────────────────────────────────────────────────────────
 function Ground({ scene, textures }: { scene: SceneData; textures: Textures }) {
   const { plotWidth: pw, plotDepth: pd } = scene;
-  const extend = Math.max(pw, pd) * 1.8;
+  const extend = Math.max(pw, pd) * 2.5;
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pw / 2, -0.004, pd / 2]} receiveShadow>
+      {/* Surrounding lawn — extends well beyond plot */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pw / 2, -0.006, pd / 2]} receiveShadow>
         <planeGeometry args={[pw + extend * 2, pd + extend * 2]} />
-        <meshStandardMaterial color="#3A5520" map={textures.grass} roughness={0.97} metalness={0} envMapIntensity={0.04} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pw / 2, -0.001, pd / 2]} receiveShadow>
-        <planeGeometry args={[pw, pd]} />
         <meshStandardMaterial
-          color="#C2BDB2" map={textures.pavers}
-          normalMap={textures.noiseNorm} normalScale={new THREE.Vector2(0.3, 0.3)}
-          roughness={0.88} metalness={0} envMapIntensity={0.06}
+          color="#4A6030" map={textures.grass}
+          roughness={0.96} metalness={0} envMapIntensity={0.05}
         />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pw / 2, -0.002, -1.5]} receiveShadow>
-        <planeGeometry args={[pw + extend * 2, 3.0]} />
-        <meshStandardMaterial color="#7A7670" map={textures.concreteDark} roughness={0.95} metalness={0} envMapIntensity={0.03} />
+      {/* Plot interior surface — cream pavers */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pw / 2, -0.002, pd / 2]} receiveShadow>
+        <planeGeometry args={[pw, pd]} />
+        <meshStandardMaterial
+          color="#C8C2B6" map={textures.pavers}
+          normalMap={textures.noiseNorm} normalScale={new THREE.Vector2(0.25, 0.25)}
+          roughness={0.84} metalness={0} envMapIntensity={0.08}
+        />
+      </mesh>
+      {/* Street / road in front of plot */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pw / 2, -0.003, -2.5]} receiveShadow>
+        <planeGeometry args={[pw + extend * 2, 5.0]} />
+        <meshStandardMaterial color="#68645E" roughness={0.97} metalness={0} envMapIntensity={0.02} />
+      </mesh>
+      {/* Kerb strip */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[pw / 2, 0.002, -0.12]} receiveShadow>
+        <planeGeometry args={[pw + extend * 2, 0.24]} />
+        <meshStandardMaterial color="#A8A298" roughness={0.88} metalness={0} />
       </mesh>
     </group>
   );
@@ -940,14 +1026,15 @@ function BuildingScene({
   isMobile: boolean;
 }) {
   const shadowMapSize = isMobile ? 1024 : 4096;
-  const aoSamples     = isMobile ? 4 : 8;
-  const aoRadius      = isMobile ? 0.8 : 1.2;
+  const aoSamples     = isMobile ? 4 : 12;
+  const aoRadius      = isMobile ? 0.9 : 1.6;
 
   return (
     <>
       <CameraController preset={preset} scene={scene} isoFloor={isoFloor} />
       <Lighting scene={scene} shadowMapSize={shadowMapSize} />
-      <Environment preset="dawn" background={false} />
+      {/* "apartment" gives crisp warm reflections on glass & metal */}
+      <Environment preset="apartment" background={false} />
 
       <FloorGroups
         scene={scene}
@@ -967,25 +1054,25 @@ function BuildingScene({
       <Ground scene={scene} textures={textures} />
 
       <ContactShadows
-        position={[scene.center[0], 0.02, scene.center[2]]}
-        scale={scene.diagonal * 2.4}
-        opacity={0.48}
-        blur={2.8}
-        far={10}
+        position={[scene.center[0], 0.015, scene.center[2]]}
+        scale={scene.diagonal * 2.8}
+        opacity={0.60}
+        blur={1.8}
+        far={14}
         resolution={isMobile ? 512 : 1024}
         frames={1}
-        color="#2A2010"
+        color="#1E1808"
       />
 
       {!isMobile && (
         <EffectComposer multisampling={0} enableNormalPass={false}>
           <N8AO
             aoRadius={aoRadius}
-            intensity={1.6}
+            intensity={2.2}
             aoSamples={aoSamples}
             denoiseSamples={4}
-            denoiseRadius={10}
-            distanceFalloff={1.2}
+            denoiseRadius={12}
+            distanceFalloff={1.0}
           />
         </EffectComposer>
       )}
@@ -1003,9 +1090,9 @@ function Btn({
       onClick={onClick}
       className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded transition-all text-[9.5px] font-semibold shrink-0"
       style={{
-        background: active ? (accent ? "rgba(100,180,80,0.20)" : "rgba(210,130,40,0.22)") : "rgba(255,255,255,0.05)",
-        border: `1px solid ${active ? (accent ? "rgba(100,180,80,0.55)" : "rgba(210,130,40,0.55)") : "rgba(255,255,255,0.09)"}`,
-        color: active ? (accent ? "#78D060" : "#E09858") : "#9AAAB8",
+        background: active ? (accent ? "rgba(128,184,80,0.18)" : "rgba(200,120,56,0.18)") : "rgba(255,255,255,0.04)",
+        border: `1px solid ${active ? (accent ? "rgba(128,184,80,0.45)" : "rgba(200,120,56,0.45)") : "rgba(78,118,46,0.18)"}`,
+        color: active ? (accent ? "#88C060" : "#D08848") : "#7A9068",
         minWidth: 44,
       }}
     >
@@ -1037,7 +1124,7 @@ const LEGEND_ROLES: MeshRole[] = [
   "window-frame","window-glass","window-sill",
 ];
 
-const TBDiv   = ({ color }: { color: string }) => <div className="w-px h-7 shrink-0" style={{ background: color }} />;
+const TBDiv   = ({ color }: { color: string }) => <div className="w-px h-5 shrink-0" style={{ background: color }} />;
 const TBLabel = ({ children, color }: { children: React.ReactNode; color: string }) => (
   <span className="text-[8px] font-bold uppercase tracking-widest shrink-0 select-none" style={{ color }}>{children}</span>
 );
@@ -1066,8 +1153,8 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
   const floorNameS = (f: number) => f === 0 ? "G" : f === scene.floors ? "Rf" : `F${f}`;
 
   const go     = (p: ViewPreset) => setPreset(p);
-  const TB     = "#18181B";
-  const TBB    = "#27272A";
+  const TB     = "#0d1509";
+  const TBB    = "rgba(78,118,46,0.20)";
   const isWalk = preset === "walkthrough";
   const walkFloor = isoFloor;
 
@@ -1076,14 +1163,14 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
   const softShadowSamples = isMobile ? 6 : 12;
 
   return (
-    <div className="relative w-full h-full flex flex-col" style={{ background: "#F0EDE8" }}>
+    <div className="relative w-full h-full flex flex-col" style={{ background: "#0d1509" }}>
 
       {/* ══ Toolbar ══════════════════════════════════════════════════════════ */}
       <div className="shrink-0 flex flex-col" style={{ background: TB, borderBottom: `1px solid ${TBB}` }}>
 
         {/* Row 1: Camera views */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto">
-          <TBLabel color="#4A5A68">Views</TBLabel>
+          <TBLabel color="#5a7a48">Views</TBLabel>
           <Btn active={preset==="orbit"}  title="Orbit" onClick={() => go("orbit")}  label={<><IconOrbit />Orbit</>} />
           <Btn active={preset==="iso"}    title="Iso"   onClick={() => go("iso")}    label={<><IconIso />Iso</>} />
           <Btn active={preset==="top"}    title="Top"   onClick={() => go("top")}    label={<><IconTop />Top</>} />
@@ -1092,19 +1179,19 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           <Btn active={preset==="rear"}  title="Rear"  onClick={() => go("rear")}  label={<><IconRear />Rear</>} />
           <Btn active={preset==="left"}  title="Left"  onClick={() => go("left")}  label={<><IconLeft />Left</>} />
           <Btn active={preset==="right"} title="Right" onClick={() => go("right")} label={<><IconRight />Right</>} />
-          <div className="ml-auto text-[9px] shrink-0" style={{ color: "#3A4A58" }}>
+          <div className="ml-auto text-[9px] shrink-0" style={{ color: "#4a6838" }}>
             {scene.meshes.length} src · {scene.rooms.length} rooms
           </div>
         </div>
 
         {/* Row 2: Modes + floor + toggles */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto" style={{ borderTop: `1px solid ${TBB}` }}>
-          <TBLabel color="#4A5A68">Modes</TBLabel>
+          <TBLabel color="#5a7a48">Modes</TBLabel>
           <Btn active={preset==="walkthrough"} title="Walkthrough" onClick={() => go("walkthrough")} label={<><IconWalk />Walk</>} />
           <Btn active={preset==="dollhouse"}   title="Dollhouse"   onClick={() => go("dollhouse")}   label={<><IconDoll />Doll</>} />
           <Btn active={preset==="exploded"}    title="Exploded"    onClick={() => go("exploded")}    label={<><IconExplode />Explode</>} />
           <TBDiv color={TBB} />
-          <TBLabel color="#4A5A68">Floor</TBLabel>
+          <TBLabel color="#5a7a48">Floor</TBLabel>
           {floorList.map(f => (
             <button
               key={f}
@@ -1112,9 +1199,9 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
               onClick={() => { setIsoFloor(f); setPreset("isolated"); }}
               className="w-7 h-7 rounded text-[10px] font-bold transition-all shrink-0"
               style={{
-                background: preset === "isolated" && isoFloor === f ? "#E09040" : preset === "isolated" ? "#27272A" : "rgba(255,255,255,0.05)",
-                color: preset === "isolated" && isoFloor === f ? "#FFF" : "#7A8A98",
-                border: `1px solid ${preset === "isolated" && isoFloor === f ? "#E09040" : TBB}`,
+                background: preset === "isolated" && isoFloor === f ? "rgba(200,120,56,0.22)" : "rgba(255,255,255,0.03)",
+                color: preset === "isolated" && isoFloor === f ? "#D08848" : "#6a8458",
+                border: `1px solid ${preset === "isolated" && isoFloor === f ? "rgba(200,120,56,0.50)" : "rgba(78,118,46,0.18)"}`,
               }}
             >
               {floorNameS(f)}
@@ -1136,14 +1223,14 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
             alpha: false,
             powerPreference: "high-performance",
             toneMapping: THREE.ACESFilmicToneMapping,
-            toneMappingExposure: 1.0,
+            toneMappingExposure: 1.15,
           }}
-          camera={{ position: initPos, fov: 46, near: 0.1, far: 8000 }}
-          style={{ background: "#D8E4EE" }}
+          camera={{ position: initPos, fov: 44, near: 0.1, far: 8000 }}
+          style={{ background: "#C0D4EE" }}
           resize={{ debounce: 0, scroll: false }}
         >
-          <color attach="background" args={["#D8E4EE"]} />
-          <fog attach="fog" args={["#D8E4EE", scene.diagonal * 5, scene.diagonal * 12]} />
+          <color attach="background" args={["#C0D4EE"]} />
+          <fog attach="fog" args={["#C8DCF4", scene.diagonal * 7, scene.diagonal * 16]} />
           <SoftShadows size={18} focus={0.6} samples={softShadowSamples} />
           <Suspense fallback={null}>
             <BuildingScene
@@ -1189,17 +1276,22 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
       {/* ── Material legend ──────────────────────────────────────────────────── */}
       <div
         className="absolute bottom-3 left-3 rounded-xl p-2.5 backdrop-blur-sm"
-        style={{ background: "rgba(255,253,250,0.92)", border: "1px solid rgba(180,170,155,0.30)", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}
+        style={{
+          background: "rgba(10,18,6,0.82)",
+          border: "1px solid rgba(78,118,46,0.22)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.40)",
+          backdropFilter: "blur(12px)",
+        }}
       >
-        <div className="text-[8px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#6A5A48" }}>Materials</div>
+        <div className="text-[8px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#7a9868" }}>Materials</div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
           {LEGEND_ROLES.map(role => (
             <div key={role} className="flex items-center gap-1.5">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-                style={{ background: ROLE_SWATCH[role], opacity: ROLE_MAT[role].opacity ?? 1, border: "0.5px solid rgba(0,0,0,0.08)" }}
+                style={{ background: ROLE_SWATCH[role], opacity: ROLE_MAT[role].opacity ?? 1, border: "0.5px solid rgba(255,255,255,0.12)" }}
               />
-              <span className="text-[8px] capitalize" style={{ color: "#7A6A58" }}>{role.replace(/-/g, " ")}</span>
+              <span className="text-[8px] capitalize" style={{ color: "#6a8060" }}>{role.replace(/-/g, " ")}</span>
             </div>
           ))}
         </div>
