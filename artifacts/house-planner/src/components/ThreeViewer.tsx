@@ -2,7 +2,7 @@ import {
   useRef, useMemo, useState, useEffect, Suspense,
 } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, ContactShadows, SoftShadows } from "@react-three/drei";
+import { OrbitControls, Environment, ContactShadows, SoftShadows, Html } from "@react-three/drei";
 import { EffectComposer, N8AO } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneData, BoxSpec, MeshRole } from "@/lib/geometryEngine3d";
@@ -639,10 +639,12 @@ function presetCamera(
         target: new THREE.Vector3(cx, 0, cz),
       };
     case "exploded": {
-      const extra = scene.floors * FLOOR_TO_FLOOR * 1.4;
+      // Total exploded stack height: each floor N sits at N * EXPLODE_GAP above ground
+      const stackH = scene.floors * EXPLODE_GAP;
+      const midH   = stackH * 0.5;
       return {
-        pos:    new THREE.Vector3(cx + d * 0.85, cy + d * 0.80 + extra * 0.4, cz + d * 0.85),
-        target: new THREE.Vector3(cx, cy + extra * 0.35, cz),
+        pos:    new THREE.Vector3(cx + d * 0.95, midH + d * 0.90, cz + d * 0.95),
+        target: new THREE.Vector3(cx, midH, cz),
       };
     }
     case "isolated": {
@@ -786,7 +788,31 @@ function CameraController({
 }
 
 // ─── Animated floor groups ────────────────────────────────────────────────────
-const EXPLODE_GAP = FLOOR_TO_FLOOR * 1.6;
+const EXPLODE_GAP = FLOOR_TO_FLOOR * 2.2;   // gap per floor in exploded view
+
+/** Pretty-print room type for labels */
+function roomLabel(type: string): string {
+  const MAP: Record<string, string> = {
+    living:    "Living Room",  dining:    "Dining",
+    kitchen:   "Kitchen",     bedroom:   "Bedroom",
+    master:    "Master BR",   bathroom:  "Bathroom",
+    toilet:    "WC",          office:    "Study / Office",
+    study:     "Study",       staircase: "Staircase",
+    parking:   "Parking",     corridor:  "Corridor",
+    balcony:   "Balcony",     store:     "Store",
+    pooja:     "Puja Room",   terrace:   "Terrace",
+    utility:   "Utility",
+  };
+  return MAP[type] ?? (type.charAt(0).toUpperCase() + type.slice(1));
+}
+
+/** Floor ordinal name */
+function floorName(f: number, total: number): string {
+  if (f === 0)     return "Ground Floor";
+  if (f === total) return "Roof / Terrace";
+  const ord = ["First","Second","Third","Fourth","Fifth"];
+  return `${ord[f - 1] ?? `${f}th`} Floor`;
+}
 
 /**
  * Compute per-mesh target opacity for dollhouse / isolated modes.
@@ -838,6 +864,7 @@ function FloorGroups({
   showFurniture: boolean;
   textures: ReturnType<typeof useTextures>;
 }) {
+  // ── Meshes bucketed by floor ────────────────────────────────────────────────
   const byFloor = useMemo<Map<number, BoxSpec[]>>(() => {
     const m = new Map<number, BoxSpec[]>();
     for (const spec of scene.meshes) {
@@ -847,33 +874,86 @@ function FloorGroups({
     return m;
   }, [scene.meshes]);
 
-  const groupRefs = useRef<Record<number, THREE.Group | null>>({});
+  // ── Stair shaft centroids (X/Z) per adjacent floor pair ────────────────────
+  // Used to render connector cylinders that visually bridge the exploded gap.
+  const stairCentroids = useMemo<Array<{ cx: number; cz: number; floorA: number; floorB: number }>>(() => {
+    const stairs = scene.meshes.filter(m => m.role === "stair-tread");
+    if (stairs.length === 0 || scene.floors < 1) return [];
+    // Group stair treads by floor and find per-floor centroid
+    const byF = new Map<number, BoxSpec[]>();
+    for (const s of stairs) {
+      if (!byF.has(s.floor)) byF.set(s.floor, []);
+      byF.get(s.floor)!.push(s);
+    }
+    const result: Array<{ cx: number; cz: number; floorA: number; floorB: number }> = [];
+    const floors = [...byF.keys()].sort((a, b) => a - b);
+    for (let i = 0; i < floors.length - 1; i++) {
+      const fa = floors[i], fb = floors[i + 1];
+      const meshesA = byF.get(fa)!;
+      const cx = meshesA.reduce((s, m) => s + m.cx, 0) / meshesA.length;
+      const cz = meshesA.reduce((s, m) => s + m.cz, 0) / meshesA.length;
+      result.push({ cx, cz, floorA: fa, floorB: fb });
+    }
+    return result;
+  }, [scene.meshes, scene.floors]);
+
+  // ── Animation state refs ────────────────────────────────────────────────────
+  const groupRefs     = useRef<Record<number, THREE.Group | null>>({});
+  const connRefs      = useRef<(THREE.Mesh | null)[]>([]);
   const currentExplode = useRef(0);
-  // Keep refs for preset/isoFloor so useFrame always sees latest values
-  const presetRef   = useRef(preset);
-  const isoFloorRef = useRef(isoFloor);
-  presetRef.current   = preset;
-  isoFloorRef.current = isoFloor;
+  const presetRef      = useRef(preset);
+  const isoFloorRef    = useRef(isoFloor);
+  presetRef.current    = preset;
+  isoFloorRef.current  = isoFloor;
 
   useFrame((_, dt) => {
     const wantExplode = presetRef.current === "exploded" ? EXPLODE_GAP : 0;
+    // Slightly asymmetric speed: fast open, gentle close
+    const speed = currentExplode.current < wantExplode ? 4.5 : 5.5;
     currentExplode.current = THREE.MathUtils.lerp(
-      currentExplode.current, wantExplode, Math.min(1, dt * 3.5),
+      currentExplode.current, wantExplode, Math.min(1, dt * speed),
     );
+    // Snap to avoid float jitter at rest
+    if (Math.abs(currentExplode.current - wantExplode) < 0.002)
+      currentExplode.current = wantExplode;
+
+    const ce = currentExplode.current;
+
+    // Move each floor group
     for (const [f, grp] of Object.entries(groupRefs.current)) {
-      if (grp) grp.position.y = Number(f) * currentExplode.current;
+      if (grp) grp.position.y = Number(f) * ce;
     }
+
+    // Update stair connector cylinders
+    // Gap = space between the top of floor N and bottom of floor N+1
+    const gap = Math.max(0, ce - FLOOR_TO_FLOOR);
+    connRefs.current.forEach((mesh, idx) => {
+      if (!mesh) return;
+      const { floorA } = stairCentroids[idx] ?? stairCentroids[0];
+      if (stairCentroids[idx] === undefined) return;
+      const gapMidY = floorA * ce + FLOOR_TO_FLOOR + gap / 2;
+      mesh.position.y = gapMidY;
+      // scaleY drives the cylinder height (geometry is unit-height centred at origin)
+      mesh.scale.y  = Math.max(0.001, gap);
+      mesh.visible  = gap > 0.06;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      mat.opacity = Math.min(1, gap / 0.5);
+    });
   });
+
+  const isExploded = preset === "exploded";
 
   return (
     <>
+      {/* ── Per-floor geometry groups ──────────────────────────────────────── */}
       {[...byFloor.entries()].map(([f, meshes]) => {
-        // Furniture visibility: always show on ground floor; show upper floors
-        // in dollhouse (dimmed ghost walls let you see furniture below ceiling)
         const hideFurniture = preset === "isolated" && f !== isoFloor;
+        const floorRooms = scene.rooms.filter(r => r.floor === f);
 
         return (
           <group key={f} ref={el => { groupRefs.current[f] = el; }}>
+
+            {/* Building geometry */}
             {meshes.map(spec => {
               const tgt = getTargetOpacity(spec.role, f, preset, isoFloor);
               return (
@@ -887,14 +967,109 @@ function FloorGroups({
               );
             })}
 
+            {/* Furniture */}
             {showFurniture && !hideFurniture && (
               <Suspense fallback={null}>
                 <FloorFurniture floor={f} rooms={scene.rooms} />
               </Suspense>
             )}
+
+            {/* ── Exploded-only: room labels ─────────────────────────────── */}
+            {isExploded && floorRooms.map(room => {
+              if (room.type === "foyer" || room.type === "passage") return null;
+              const rx = room.x + room.width  / 2;
+              const rz = room.y + room.depth  / 2;
+              return (
+                <Html
+                  key={room.id}
+                  position={[rx, 0.52, rz]}
+                  center
+                  distanceFactor={18}
+                  zIndexRange={[10, 20]}
+                  style={{ pointerEvents: "none" }}
+                >
+                  <div style={{
+                    background: "rgba(18,22,30,0.82)",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    borderRadius: 6,
+                    padding: "3px 8px",
+                    color: "#D8E4F0",
+                    fontFamily: "system-ui, sans-serif",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    lineHeight: "18px",
+                    whiteSpace: "nowrap",
+                    letterSpacing: "0.02em",
+                    backdropFilter: "blur(4px)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}>
+                    <span>{roomLabel(room.type)}</span>
+                    <span style={{
+                      color: "#7090A8",
+                      fontSize: 9,
+                      fontWeight: 400,
+                    }}>
+                      {room.area.toFixed(0)} m²
+                    </span>
+                  </div>
+                </Html>
+              );
+            })}
+
+            {/* ── Exploded-only: floor level badge on building side ─────────── */}
+            {isExploded && (
+              <Html
+                position={[scene.plotWidth + 1.4, FLOOR_TO_FLOOR * 0.5, scene.plotDepth / 2]}
+                center
+                distanceFactor={18}
+                zIndexRange={[10, 20]}
+                style={{ pointerEvents: "none" }}
+              >
+                <div style={{
+                  background: "rgba(220,130,40,0.92)",
+                  border: "1px solid rgba(255,200,100,0.45)",
+                  borderRadius: 5,
+                  padding: "2px 9px",
+                  color: "#FFF8EC",
+                  fontFamily: "system-ui, sans-serif",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  whiteSpace: "nowrap",
+                  textTransform: "uppercase",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+                }}>
+                  {floorName(f, scene.floors)}
+                </div>
+              </Html>
+            )}
           </group>
         );
       })}
+
+      {/* ── Stair connector cylinders (world space — bridge gap between floors) */}
+      {stairCentroids.map(({ cx, cz }, idx) => (
+        <mesh
+          key={`stair-conn-${idx}`}
+          ref={el => { connRefs.current[idx] = el; }}
+          position={[cx, 0, cz]}
+          visible={false}
+        >
+          {/* Unit-height cylinder; scale.y is animated to match the gap */}
+          <cylinderGeometry args={[0.06, 0.06, 1, 8]} />
+          <meshStandardMaterial
+            color="#8090A0"
+            roughness={0.7}
+            metalness={0.1}
+            opacity={0}
+            transparent
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
     </>
   );
 }
@@ -922,11 +1097,11 @@ function Lighting({ scene }: { scene: SceneData }) {
         castShadow
         shadow-mapSize-width={4096}
         shadow-mapSize-height={4096}
-        shadow-camera-far={d * 8}
-        shadow-camera-left={-d * 2.2}
-        shadow-camera-right={d * 2.2}
-        shadow-camera-top={d * 2.2}
-        shadow-camera-bottom={-d * 2.2}
+        shadow-camera-far={d * 12}
+        shadow-camera-left={-d * 3.0}
+        shadow-camera-right={d * 3.0}
+        shadow-camera-top={d * 4.5}
+        shadow-camera-bottom={-d * 2.5}
         shadow-bias={-0.0002}
         shadow-normalBias={0.02}
         shadow-radius={8}
