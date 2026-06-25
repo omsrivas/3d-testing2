@@ -1,2 +1,3 @@
 - [React 19 + react-konva compat](react19-konva.md) — react-konva v18 bundles its own reconciler that crashes with React 19; upgrade to react-konva v19 instead of shimming.
 - [PBR materials approach](pbr-materials.md) — procedural CanvasTexture textures created outside R3F Canvas and passed as props; Environment preset="city" for reflections.
+- [Postprocessing + lighting](postprocessing-lighting.md) — N8AO v2.16 with R3F v8; enableNormalPass={false} not disableNormalPass

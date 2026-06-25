@@ -2,7 +2,8 @@ import {
   useRef, useMemo, useState, useEffect, Suspense,
 } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment } from "@react-three/drei";
+import { OrbitControls, Environment, ContactShadows, SoftShadows } from "@react-three/drei";
+import { EffectComposer, N8AO } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneData, BoxSpec, MeshRole } from "@/lib/geometryEngine3d";
 import { FLOOR_TO_FLOOR } from "@/lib/geometryEngine3d/constants";
@@ -718,47 +719,55 @@ function FloorGroups({
   );
 }
 
-// ─── Lighting — warm Indian afternoon (~4 pm) ─────────────────────────────────
+// ─── Lighting — modern architectural daylight ─────────────────────────────────
+// Balanced for contemporary residential visualization:
+// - Soft warm sun (10 am east-southeast elevation)
+// - Cool diffuse sky fill from the opposite quadrant
+// - Gentle ground bounce
+// - Hemisphere gradient for overall atmospheric wrap
 function Lighting({ scene }: { scene: SceneData }) {
   const d = scene.diagonal;
   const [cx, , cz] = scene.center;
   return (
     <>
-      <ambientLight color="#FFF6EC" intensity={0.30} />
+      {/* Soft ambient — keeps shadow areas from going fully black */}
+      <ambientLight color="#F8F4EE" intensity={0.22} />
 
-      {/* Primary sun — warm golden, NW high */}
+      {/* Primary sun — warm 10 am east-southeast, elevated 55°
+          Lower intensity + 4096 shadow map + radius → soft natural edges */}
       <directionalLight
-        color="#FFE08A"
-        position={[cx + d * 1.1, d * 1.7, cz - d * 0.4]}
-        intensity={2.2}
+        color="#FFE8B0"
+        position={[cx + d * 1.3, d * 2.0, cz + d * 0.5]}
+        intensity={1.45}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={d * 7}
-        shadow-camera-left={-d * 1.8}
-        shadow-camera-right={d * 1.8}
-        shadow-camera-top={d * 1.8}
-        shadow-camera-bottom={-d * 1.8}
-        shadow-bias={-0.0003}
-        shadow-normalBias={0.025}
+        shadow-mapSize-width={4096}
+        shadow-mapSize-height={4096}
+        shadow-camera-far={d * 8}
+        shadow-camera-left={-d * 2.2}
+        shadow-camera-right={d * 2.2}
+        shadow-camera-top={d * 2.2}
+        shadow-camera-bottom={-d * 2.2}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.02}
+        shadow-radius={8}
       />
 
-      {/* Sky fill — cool blue from opposite side */}
+      {/* Sky fill — soft blue from northwest (overcast sky GI simulation) */}
       <directionalLight
-        color="#C0D4F0"
-        position={[cx - d * 0.7, d * 0.5, cz + d * 0.9]}
-        intensity={0.38}
+        color="#BDD4F0"
+        position={[cx - d * 1.0, d * 0.6, cz - d * 0.7]}
+        intensity={0.32}
       />
 
-      {/* Bounce fill — warm ground */}
+      {/* Bounce fill — warm reflected ground light */}
       <directionalLight
-        color="#E8C890"
-        position={[cx, -d * 0.2, cz]}
-        intensity={0.16}
+        color="#F0DEB8"
+        position={[cx + d * 0.2, -d * 0.3, cz + d * 0.4]}
+        intensity={0.10}
       />
 
-      {/* Hemisphere sky/ground gradient */}
-      <hemisphereLight args={["#B0C8E4", "#C0A060", 0.55]} />
+      {/* Hemisphere — sky/ground atmosphere wrap */}
+      <hemisphereLight args={["#C8DCF4", "#D4C4A0", 0.48]} />
     </>
   );
 }
@@ -843,8 +852,10 @@ function BuildingScene({
     <>
       <CameraController preset={preset} scene={scene} isoFloor={isoFloor} />
       <Lighting scene={scene} />
-      {/* Sunset/overcast env map for reflections on metal & glass */}
-      <Environment preset="city" background={false} />
+
+      {/* Warm morning daylight HDRI — drives reflections on glass & metal */}
+      <Environment preset="dawn" background={false} />
+
       <FloorGroups
         scene={scene}
         preset={preset}
@@ -859,6 +870,30 @@ function BuildingScene({
         </Suspense>
       )}
       <Ground scene={scene} textures={textures} />
+
+      {/* Contact shadows — soft grounding of the building on terrain */}
+      <ContactShadows
+        position={[scene.center[0], 0.02, scene.center[2]]}
+        scale={scene.diagonal * 2.4}
+        opacity={0.48}
+        blur={2.8}
+        far={10}
+        resolution={1024}
+        frames={1}
+        color="#2A2010"
+      />
+
+      {/* Screen-space ambient occlusion — adds depth to corners & crevices */}
+      <EffectComposer multisampling={0} enableNormalPass={false}>
+        <N8AO
+          aoRadius={1.2}
+          intensity={1.6}
+          aoSamples={8}
+          denoiseSamples={4}
+          denoiseRadius={10}
+          distanceFalloff={1.2}
+        />
+      </EffectComposer>
     </>
   );
 }
@@ -1016,13 +1051,15 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
       <div className="flex-1 w-full">
         <Canvas
           shadows={{ type: THREE.PCFSoftShadowMap }}
-          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.08 }}
+          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
           camera={{ position: initPos, fov: 46, near: 0.1, far: 8000 }}
-          style={{ background: "#E8EEF4" }}
+          style={{ background: "#D8E4EE" }}
           resize={{ debounce: 0, scroll: false }}
         >
-          <color attach="background" args={["#E8EEF4"]} />
-          <fog attach="fog" args={["#E8EEF4", scene.diagonal * 4, scene.diagonal * 10]} />
+          <color attach="background" args={["#D8E4EE"]} />
+          <fog attach="fog" args={["#D8E4EE", scene.diagonal * 5, scene.diagonal * 12]} />
+          {/* Soft shadow penumbra — spreads PCF taps for natural feathering */}
+          <SoftShadows size={18} focus={0.6} samples={12} />
           <Suspense fallback={null}>
             <BuildingScene
               scene={scene}
