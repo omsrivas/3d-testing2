@@ -1,34 +1,48 @@
-import { useState, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useCallback, useMemo, lazy, Suspense, useRef, useEffect } from "react";
 import { generateLayout } from "@/lib/layoutEngine";
 import type { LayoutInput, LayoutOutput } from "@/lib/layoutEngine";
 import { build3dScene } from "@/lib/geometryEngine3d";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Ruler, Grid3X3, RefreshCw, ChevronRight, Building2,
-  BedDouble, Bath, Car, Layers, Compass, AlertTriangle,
-  CheckCircle2, Info, Home, Box, Menu, X,
-} from "lucide-react";
 import FloorPlanCanvas from "@/components/FloorPlanCanvas";
 
-// ─── Unit helpers ─────────────────────────────────────────────────────────────
-const M_TO_FT   = 3.28084;
-const FT_TO_M   = 0.3048;
-const M2_TO_SQFT = 10.7639;
-const ftToM   = (ft: number)  => ft * FT_TO_M;
-const mToFt   = (m: number)   => Math.round(m * M_TO_FT);
-const toSqft  = (m2: number)  => Math.round(m2 * M2_TO_SQFT);
-const sqftStr = (m2: number)  => `${toSqft(m2).toLocaleString()} sq ft`;
+// ─── Lucide icons (tree-shakeable) ───────────────────────────────────────────
+import {
+  Building2, RefreshCw, AlertTriangle,
+  ChevronRight, Box, Grid3X3, PanelLeftClose, PanelLeftOpen,
+  BedDouble, Bath, Car, Compass, LayoutDashboard, Layers3,
+  ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+  Minus, Plus, CheckCircle2, X,
+} from "lucide-react";
 
-// ─── Room colour legend ───────────────────────────────────────────────────────
+// ─── Unit helpers ─────────────────────────────────────────────────────────────
+const FT_TO_M   = 0.3048;
+const M_TO_FT   = 3.28084;
+const M2_TO_SQFT = 10.7639;
+const ftToM  = (ft: number) => ft * FT_TO_M;
+const mToFt  = (m: number)  => Math.round(m * M_TO_FT);
+const toSqft = (m2: number) => Math.round(m2 * M2_TO_SQFT).toLocaleString();
+
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const T = {
+  bg:           "#0b1207",
+  bgDeep:       "#070e04",
+  glass:        "rgba(12, 20, 7, 0.82)",
+  glassBright:  "rgba(16, 26, 10, 0.90)",
+  border:       "rgba(78, 118, 46, 0.18)",
+  borderHover:  "rgba(100, 148, 60, 0.32)",
+  accent:       "#c87838",
+  accentDim:    "rgba(200, 120, 56, 0.14)",
+  accentBorder: "rgba(200, 120, 56, 0.32)",
+  green:        "#80b850",
+  greenDim:     "rgba(128, 184, 80, 0.14)",
+  textPri:      "#dcd8c2",
+  textSec:      "#88966a",
+  textMut:      "#50604a",
+  textHead:     "#a0bc78",
+  inputBg:      "rgba(6, 12, 4, 0.70)",
+  inputBorder:  "rgba(68, 108, 36, 0.28)",
+} as const;
+
+// ─── Room palette ─────────────────────────────────────────────────────────────
 const ROOM_COLORS: Record<string, string> = {
   living: "#dbeafe", dining: "#dcfce7", kitchen: "#fef9c3",
   master_bedroom: "#ede9fe", bedroom: "#e0e7ff",
@@ -39,202 +53,370 @@ const ROOM_COLORS: Record<string, string> = {
 const ROOM_LABELS: Record<string, string> = {
   living: "Living", dining: "Dining", kitchen: "Kitchen",
   master_bedroom: "Master Bed", bedroom: "Bedroom",
-  bathroom: "Bathroom", toilet: "WC", balcony: "Balcony",
+  bathroom: "Bath", toilet: "WC", balcony: "Balcony",
   parking: "Parking", staircase: "Stairs", foyer: "Foyer",
   pooja: "Pooja", utility: "Utility", passage: "Passage", terrace: "Terrace",
 };
 
-// ─── Default: 30 ft × 40 ft — standard Indian residential plot ────────────────
 const DEFAULT_INPUT: LayoutInput = {
-  plotWidth: ftToM(30),   // 9.144 m
-  plotDepth: ftToM(40),   // 12.192 m
-  facingDirection: "N",
-  floors: 2, bedrooms: 3, bathrooms: 3,
+  plotWidth: ftToM(30), plotDepth: ftToM(40),
+  facingDirection: "N", floors: 2, bedrooms: 3, bathrooms: 3,
   hasBalcony: true, hasParking: true, hasStaircase: true, vastuCompliant: true,
 };
 
-// ─── Shared sidebar panel styles ──────────────────────────────────────────────
-const SB_BG     = "#131d0b";
-const SB_BORDER = "#2a3820";
-const SB_TEXT   = "#e8dfc0";
-const SB_MUTED  = "#7a8a60";
-const SB_INPUT  = { background: "#1a2610", borderColor: "#304020", color: SB_TEXT } as const;
-const SB_HEAD   = { color: "#90b060" } as const;
-
 type ViewMode = "2d" | "3d";
 
-// ─── Extracted config panel (shared between desktop sidebar & mobile drawer) ──
-function ConfigPanel({
-  input,
-  setInput,
-}: {
-  input: LayoutInput;
-  setInput: React.Dispatch<React.SetStateAction<LayoutInput>>;
-}) {
+// ─── Primitive control components ─────────────────────────────────────────────
+
+/** Section heading in the left panel */
+function SectionHead({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
   return (
-    <div className="p-4 space-y-5">
+    <div className="flex items-center gap-2 mb-3">
+      <Icon size={11} style={{ color: T.textSec }} />
+      <span style={{
+        fontSize: 9, fontWeight: 700, letterSpacing: "0.14em",
+        textTransform: "uppercase", color: T.textHead,
+      }}>
+        {label}
+      </span>
+    </div>
+  );
+}
 
-      {/* Plot dimensions — displayed in feet */}
-      <div>
-        <h2 className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2"
-          style={SB_HEAD}>
-          <Ruler className="w-3.5 h-3.5" /> Plot Dimensions
-        </h2>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Width (ft)", key: "plotWidth", min: 10, max: 200 },
-            { label: "Depth (ft)", key: "plotDepth", min: 15, max: 300 },
-          ].map(({ label, key, min, max }) => (
-            <div key={key}>
-              <Label className="text-xs mb-1 block" style={{ color: SB_MUTED }}>{label}</Label>
-              <Input
-                type="number"
-                min={min}
-                max={max}
-                value={mToFt(input[key as keyof LayoutInput] as number)}
-                onChange={e => {
-                  const ft = parseFloat(e.target.value) || 0;
-                  setInput(p => ({ ...p, [key]: ftToM(ft) }));
-                }}
-                className="h-8 text-sm"
-                style={SB_INPUT}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+/** Thin divider between sections */
+function Divider() {
+  return <div style={{ height: 1, background: T.border, margin: "18px 0" }} />;
+}
 
-      <Separator style={{ background: SB_BORDER }} />
+/** Stepper: integer +/− */
+function Stepper({
+  value, min, max, onChange,
+}: { value: number; min: number; max: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex items-center gap-0" style={{
+      background: T.inputBg, border: `1px solid ${T.inputBorder}`,
+      borderRadius: 8, overflow: "hidden",
+    }}>
+      <button
+        onClick={() => onChange(Math.max(min, value - 1))}
+        className="flex items-center justify-center transition-colors"
+        style={{ width: 32, height: 32, color: T.textSec }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = T.glassBright; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+      >
+        <Minus size={12} />
+      </button>
+      <span style={{
+        flex: 1, textAlign: "center", fontSize: 14, fontWeight: 600,
+        fontFamily: "ui-monospace, monospace", color: T.textPri, lineHeight: "32px",
+      }}>
+        {value}
+      </span>
+      <button
+        onClick={() => onChange(Math.min(max, value + 1))}
+        className="flex items-center justify-center transition-colors"
+        style={{ width: 32, height: 32, color: T.textSec }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = T.glassBright; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+      >
+        <Plus size={12} />
+      </button>
+    </div>
+  );
+}
 
-      {/* Orientation */}
-      <div>
-        <h2 className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2"
-          style={SB_HEAD}>
-          <Compass className="w-3.5 h-3.5" /> Orientation
-        </h2>
-        <Select
-          value={input.facingDirection}
-          onValueChange={v => setInput(p => ({ ...p, facingDirection: v as LayoutInput["facingDirection"] }))}
-        >
-          <SelectTrigger className="h-8 text-sm" style={SB_INPUT}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent style={{ background: "#1a2610", borderColor: "#304020" }}>
-            {["N","S","E","W"].map(d => (
-              <SelectItem key={d} value={d} style={{ color: SB_TEXT }}>
-                {d === "N" ? "North" : d === "S" ? "South" : d === "E" ? "East" : "West"} Facing
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+/** Dimension input: feet typed directly */
+function DimInput({
+  label, valueFt, minFt, maxFt, onChange,
+}: { label: string; valueFt: number; minFt: number; maxFt: number; onChange: (ft: number) => void }) {
+  const [raw, setRaw] = useState(String(valueFt));
+  useEffect(() => setRaw(String(valueFt)), [valueFt]);
 
-      <Separator style={{ background: SB_BORDER }} />
-
-      {/* Structure */}
-      <div>
-        <h2 className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2"
-          style={SB_HEAD}>
-          <Layers className="w-3.5 h-3.5" /> Structure
-        </h2>
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs mb-1 block" style={{ color: SB_MUTED }}>Number of Floors</Label>
-            <Select
-              value={String(input.floors)}
-              onValueChange={v => setInput(p => ({ ...p, floors: parseInt(v) }))}
-            >
-              <SelectTrigger className="h-8 text-sm" style={SB_INPUT}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent style={{ background: "#1a2610", borderColor: "#304020" }}>
-                {[1,2,3,4,5].map(n => (
-                  <SelectItem key={n} value={String(n)} style={{ color: SB_TEXT }}>
-                    {n === 1 ? "Single (G)" : `${n} Floors (G+${n-1})`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {[
-            { key: "bedrooms",  label: "Bedrooms",  icon: BedDouble, min: 0, max: 10 },
-            { key: "bathrooms", label: "Bathrooms", icon: Bath,       min: 0, max: 12 },
-          ].map(({ key, label, icon: Icon, min, max }) => (
-            <div key={key}>
-              <Label className="text-xs mb-1 flex items-center gap-1.5" style={{ color: SB_MUTED }}>
-                <Icon className="w-3 h-3" /> {label}
-              </Label>
-              <Input
-                type="number" min={min} max={max}
-                value={input[key as keyof LayoutInput] as number}
-                onChange={e => setInput(p => ({ ...p, [key]: parseInt(e.target.value) || 0 }))}
-                className="h-8 text-sm"
-                style={SB_INPUT}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <Separator style={{ background: SB_BORDER }} />
-
-      {/* Features */}
-      <div>
-        <h2 className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2"
-          style={SB_HEAD}>
-          <Grid3X3 className="w-3.5 h-3.5" /> Features
-        </h2>
-        <div className="space-y-3">
-          {[
-            { key: "hasBalcony",     label: "Balcony",         icon: Home },
-            { key: "hasParking",     label: "Covered Parking", icon: Car },
-            { key: "hasStaircase",   label: "Staircase",       icon: Layers },
-            { key: "vastuCompliant", label: "Vastu Compliant", icon: Compass },
-          ].map(({ key, label, icon: Icon }) => (
-            <div key={key} className="flex items-center justify-between">
-              <Label className="text-sm flex items-center gap-2 cursor-pointer" style={{ color: "#c8d0a8" }}>
-                <Icon className="w-3.5 h-3.5" style={{ color: SB_MUTED }} />
-                {label}
-              </Label>
-              <Switch
-                checked={input[key as keyof LayoutInput] as boolean}
-                onCheckedChange={v => setInput(p => ({ ...p, [key]: v }))}
-              />
-            </div>
-          ))}
-        </div>
+  return (
+    <div>
+      <label style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.10em",
+        textTransform: "uppercase", color: T.textSec, display: "block", marginBottom: 6 }}>
+        {label}
+      </label>
+      <div className="flex items-center gap-0" style={{
+        background: T.inputBg, border: `1px solid ${T.inputBorder}`,
+        borderRadius: 8, overflow: "hidden",
+      }}>
+        <button
+          onClick={() => onChange(Math.max(minFt, valueFt - 1))}
+          className="flex items-center justify-center"
+          style={{ width: 28, height: 34, color: T.textSec, flexShrink: 0 }}
+        ><Minus size={11} /></button>
+        <input
+          type="number" min={minFt} max={maxFt}
+          value={raw}
+          onChange={e => setRaw(e.target.value)}
+          onBlur={() => {
+            const ft = Math.round(Math.max(minFt, Math.min(maxFt, parseFloat(raw) || minFt)));
+            setRaw(String(ft));
+            onChange(ft);
+          }}
+          style={{
+            flex: 1, background: "transparent", border: "none", outline: "none",
+            textAlign: "center", fontSize: 13, fontWeight: 600,
+            fontFamily: "ui-monospace, monospace", color: T.textPri,
+            height: 34, minWidth: 0,
+          }}
+        />
+        <span style={{ fontSize: 10, color: T.textMut, paddingRight: 10, flexShrink: 0 }}>ft</span>
       </div>
     </div>
   );
 }
 
-// ─── Lazy-loaded 3D viewer ────────────────────────────────────────────────────
+/** Compass direction picker: N/E/S/W pill grid */
+function CompassPicker({
+  value, onChange,
+}: { value: string; onChange: (v: string) => void }) {
+  const DIRS = [
+    { d: "N", icon: ArrowUp,    label: "North" },
+    { d: "E", icon: ArrowRight, label: "East"  },
+    { d: "S", icon: ArrowDown,  label: "South" },
+    { d: "W", icon: ArrowLeft,  label: "West"  },
+  ];
+  return (
+    <div className="grid grid-cols-4 gap-1">
+      {DIRS.map(({ d, icon: Icon, label }) => {
+        const active = value === d;
+        return (
+          <button
+            key={d}
+            title={label}
+            onClick={() => onChange(d)}
+            className="flex flex-col items-center gap-1 py-2 rounded-lg transition-all"
+            style={{
+              background: active ? T.accentDim : T.inputBg,
+              border: `1px solid ${active ? T.accentBorder : T.inputBorder}`,
+              color: active ? T.accent : T.textSec,
+            }}
+          >
+            <Icon size={12} />
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>{d}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Floor count pill row */
+function FloorPills({
+  value, onChange,
+}: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map(n => {
+        const active = value === n;
+        return (
+          <button
+            key={n}
+            onClick={() => onChange(n)}
+            className="flex-1 py-1.5 rounded-md text-xs font-bold transition-all"
+            style={{
+              background: active ? T.accentDim : T.inputBg,
+              border: `1px solid ${active ? T.accentBorder : T.inputBorder}`,
+              color: active ? T.accent : T.textSec,
+              fontSize: 11,
+            }}
+          >
+            G{n > 1 ? `+${n-1}` : ""}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Feature toggle row */
+function FeatureRow({
+  icon: Icon, label, checked, onChange,
+}: { icon: React.ElementType; label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div
+      className="flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer transition-all"
+      style={{
+        background: checked ? T.greenDim : "transparent",
+        border: `1px solid ${checked ? "rgba(128,184,80,0.18)" : "transparent"}`,
+      }}
+      onClick={() => onChange(!checked)}
+    >
+      <div className="flex items-center gap-2.5">
+        <Icon size={12} style={{ color: checked ? T.green : T.textMut }} />
+        <span style={{ fontSize: 12, color: checked ? T.textPri : T.textSec }}>{label}</span>
+      </div>
+      {/* Custom toggle */}
+      <div
+        className="relative transition-all"
+        style={{
+          width: 34, height: 18, borderRadius: 9,
+          background: checked ? "rgba(128,184,80,0.50)" : T.inputBg,
+          border: `1px solid ${checked ? "rgba(128,184,80,0.40)" : T.inputBorder}`,
+        }}
+      >
+        <div
+          className="absolute top-0.5 transition-all"
+          style={{
+            width: 14, height: 14, borderRadius: "50%",
+            background: checked ? T.green : T.textMut,
+            left: checked ? 17 : 2,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Config panel content ─────────────────────────────────────────────────────
+function ConfigPanel({
+  input, setInput, onGenerate,
+}: {
+  input: LayoutInput;
+  setInput: React.Dispatch<React.SetStateAction<LayoutInput>>;
+  onGenerate: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Scrollable controls */}
+      <div className="flex-1 overflow-y-auto p-5" style={{ scrollbarWidth: "none" }}>
+
+        {/* Plot */}
+        <SectionHead icon={LayoutDashboard} label="Plot Size" />
+        <div className="grid grid-cols-2 gap-2">
+          <DimInput
+            label="Width" valueFt={mToFt(input.plotWidth)} minFt={10} maxFt={200}
+            onChange={ft => setInput(p => ({ ...p, plotWidth: ftToM(ft) }))}
+          />
+          <DimInput
+            label="Depth" valueFt={mToFt(input.plotDepth)} minFt={15} maxFt={300}
+            onChange={ft => setInput(p => ({ ...p, plotDepth: ftToM(ft) }))}
+          />
+        </div>
+
+        <Divider />
+
+        {/* Orientation */}
+        <SectionHead icon={Compass} label="Facing Direction" />
+        <CompassPicker
+          value={input.facingDirection}
+          onChange={v => setInput(p => ({ ...p, facingDirection: v as LayoutInput["facingDirection"] }))}
+        />
+
+        <Divider />
+
+        {/* Floors */}
+        <SectionHead icon={Layers3} label="Floors" />
+        <FloorPills value={input.floors} onChange={v => setInput(p => ({ ...p, floors: v }))} />
+
+        <Divider />
+
+        {/* Rooms */}
+        <SectionHead icon={BedDouble} label="Rooms" />
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BedDouble size={12} style={{ color: T.textSec }} />
+              <span style={{ fontSize: 12, color: T.textSec }}>Bedrooms</span>
+            </div>
+            <Stepper value={input.bedrooms} min={0} max={10}
+              onChange={v => setInput(p => ({ ...p, bedrooms: v }))} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Bath size={12} style={{ color: T.textSec }} />
+              <span style={{ fontSize: 12, color: T.textSec }}>Bathrooms</span>
+            </div>
+            <Stepper value={input.bathrooms} min={0} max={12}
+              onChange={v => setInput(p => ({ ...p, bathrooms: v }))} />
+          </div>
+        </div>
+
+        <Divider />
+
+        {/* Features */}
+        <SectionHead icon={Grid3X3} label="Features" />
+        <div className="space-y-1">
+          <FeatureRow icon={LayoutDashboard} label="Balcony"        checked={input.hasBalcony}     onChange={v => setInput(p => ({ ...p, hasBalcony: v }))} />
+          <FeatureRow icon={Car}             label="Covered Parking" checked={input.hasParking}     onChange={v => setInput(p => ({ ...p, hasParking: v }))} />
+          <FeatureRow icon={Layers3}         label="Staircase"       checked={input.hasStaircase}   onChange={v => setInput(p => ({ ...p, hasStaircase: v }))} />
+          <FeatureRow icon={Compass}         label="Vastu Compliant" checked={input.vastuCompliant} onChange={v => setInput(p => ({ ...p, vastuCompliant: v }))} />
+        </div>
+      </div>
+
+      {/* Generate button */}
+      <div className="p-4 shrink-0" style={{ borderTop: `1px solid ${T.border}` }}>
+        <button
+          onClick={onGenerate}
+          className="w-full flex items-center justify-center gap-2.5 transition-all"
+          style={{
+            height: 42, borderRadius: 10, background: T.accent,
+            color: "#fff8ee", fontWeight: 700, fontSize: 13,
+            letterSpacing: "0.04em", border: "none",
+            boxShadow: "0 2px 16px rgba(200,120,56,0.30)",
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = "#d98840";
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 4px 24px rgba(200,120,56,0.45)";
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = T.accent;
+            (e.currentTarget as HTMLElement).style.boxShadow = "0 2px 16px rgba(200,120,56,0.30)";
+          }}
+        >
+          <RefreshCw size={14} />
+          Generate Layout
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Lazy 3D viewer ───────────────────────────────────────────────────────────
 const ThreeViewer = lazy(() => import("@/components/ThreeViewer"));
+
+// ─── Stat row for summary panel ───────────────────────────────────────────────
+function StatRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between py-1.5">
+      <span style={{ fontSize: 10, color: T.textMut, letterSpacing: "0.04em" }}>{label}</span>
+      <span style={{
+        fontSize: 12, fontWeight: 700,
+        fontFamily: "ui-monospace, monospace",
+        color: highlight ? T.green : T.textPri,
+      }}>{value}</span>
+    </div>
+  );
+}
+
+// ─── Dot-grid background pattern ─────────────────────────────────────────────
+const DOT_GRID = `radial-gradient(circle, rgba(78,118,46,0.18) 1px, transparent 1px)`;
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function HousePlannerPage() {
-  const [input, setInput]               = useState<LayoutInput>(DEFAULT_INPUT);
-  const [result, setResult]             = useState<{ success: true; output: LayoutOutput } | null>(null);
-  const [errors, setErrors]             = useState<Array<{ field: string; message: string }>>([]);
-  const [activeFloor, setActiveFloor]   = useState(0);
+  const [input, setInput]       = useState<LayoutInput>(DEFAULT_INPUT);
+  const [result, setResult]     = useState<{ success: true; output: LayoutOutput } | null>(null);
+  const [errors, setErrors]     = useState<Array<{ field: string; message: string }>>([]);
+  const [activeFloor, setActiveFloor] = useState(0);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [hasGenerated, setHasGenerated] = useState(false);
-  const [viewMode, setViewMode]         = useState<ViewMode>("2d");
-  const [sidebarOpen, setSidebarOpen]   = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("2d");
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [mobilePanel, setMobilePanel] = useState(false);
 
   const generate = useCallback(() => {
     const out = generateLayout(input);
     if (out.success) {
-      setResult(out);
-      setErrors([]);
-      setActiveFloor(0);
-      setSelectedRoomId(null);
+      setResult(out); setErrors([]);
+      setActiveFloor(0); setSelectedRoomId(null);
     } else {
-      setErrors(out.errors);
-      setResult(null);
+      setErrors(out.errors); setResult(null);
     }
     setHasGenerated(true);
-    setSidebarOpen(false);
+    setMobilePanel(false);
   }, [input]);
 
   const scene3d = useMemo(() => {
@@ -242,180 +424,245 @@ export default function HousePlannerPage() {
     return build3dScene(result.output, input);
   }, [result, input]);
 
-  const selectedRoom = result?.output.rooms.find(r => r.id === selectedRoomId) ?? null;
-  const floorTabs    = Array.from({ length: input.floors }, (_, i) => i);
-  const floorLabel   = (i: number) =>
-    i === 0 ? "Ground Floor" : i === 1 ? "First Floor" : i === 2 ? "Second Floor" : `Floor ${i}`;
+  const floorTabs = Array.from({ length: input.floors }, (_, i) => i);
+  const floorLabel = (i: number) =>
+    i === 0 ? "Ground" : i === 1 ? "First" : i === 2 ? "Second" : `F${i}`;
+
+  // ── Glass panel style helper ────────────────────────────────────────────────
+  const glassPanel = {
+    background: T.glass,
+    backdropFilter: "blur(20px)",
+    WebkitBackdropFilter: "blur(20px)",
+    border: `1px solid ${T.border}`,
+    boxShadow: "0 8px 40px rgba(0,0,0,0.50), inset 0 1px 0 rgba(130,200,80,0.06)",
+  } as React.CSSProperties;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: "#0f1a08", color: SB_TEXT }}>
-
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+    <div
+      className="h-screen flex flex-col overflow-hidden"
+      style={{ background: T.bg, fontFamily: "'Inter', system-ui, sans-serif" }}
+    >
+      {/* ══ HEADER ══════════════════════════════════════════════════════════ */}
       <header
-        className="border-b px-4 py-2.5 flex items-center gap-3 shrink-0"
-        style={{ borderColor: SB_BORDER, background: SB_BG }}
+        className="shrink-0 flex items-center gap-3 px-4 py-0"
+        style={{
+          height: 48,
+          background: T.glassBright,
+          borderBottom: `1px solid ${T.border}`,
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+        }}
       >
-        <Building2 className="w-5 h-5 shrink-0" style={{ color: "#c1672a" }} />
-        <h1 className="font-semibold text-base sm:text-lg" style={{ color: SB_TEXT }}>
-          AI House Planner
-        </h1>
-        <Badge
-          className="text-xs ml-0.5 hidden sm:flex"
-          style={{ background: "#1e2e10", color: "#90b060", border: "1px solid #3a5228" }}
-        >
-          Premium Floor Plan Engine
-        </Badge>
+        {/* Logo mark */}
+        <div className="flex items-center gap-2.5">
+          <div style={{
+            width: 28, height: 28, borderRadius: 8,
+            background: "rgba(200,120,56,0.16)",
+            border: `1px solid rgba(200,120,56,0.28)`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Building2 size={14} style={{ color: T.accent }} />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: T.textPri, letterSpacing: "-0.01em", lineHeight: 1.2 }}>
+              AI House Planner
+            </div>
+            <div style={{ fontSize: 9, color: T.textMut, letterSpacing: "0.14em", textTransform: "uppercase", lineHeight: 1 }}>
+              Premium Floor Plan Engine
+            </div>
+          </div>
+        </div>
 
-        <span className="ml-auto text-xs hidden lg:block" style={{ color: "#6a7850" }}>
+        {/* Desktop panel toggle */}
+        <button
+          onClick={() => setPanelOpen(v => !v)}
+          className="hidden md:flex items-center gap-1.5 transition-all ml-2"
+          style={{
+            height: 28, paddingInline: 10, borderRadius: 6,
+            background: panelOpen ? T.accentDim : "transparent",
+            border: `1px solid ${panelOpen ? T.accentBorder : T.border}`,
+            color: panelOpen ? T.accent : T.textSec, fontSize: 11, fontWeight: 600,
+          }}
+          title="Toggle configuration panel"
+        >
+          {panelOpen ? <PanelLeftClose size={13} /> : <PanelLeftOpen size={13} />}
+          <span className="hidden lg:block">{panelOpen ? "Hide Panel" : "Configure"}</span>
+        </button>
+
+        {/* Caption */}
+        <span className="ml-auto text-[10px] hidden lg:block" style={{ color: T.textMut, letterSpacing: "0.08em" }}>
           Vastu-aware · Deterministic · SVG/PNG export
         </span>
 
-        {/* Mobile menu button */}
+        {/* Mobile config button */}
         <button
-          className="md:hidden ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold"
-          style={{ background: "rgba(193,103,42,0.18)", color: "#c1672a", border: "1px solid rgba(193,103,42,0.35)" }}
-          onClick={() => setSidebarOpen(true)}
+          className="md:hidden ml-auto flex items-center gap-1.5"
+          onClick={() => setMobilePanel(true)}
+          style={{
+            height: 30, paddingInline: 12, borderRadius: 8,
+            background: T.accentDim, border: `1px solid ${T.accentBorder}`,
+            color: T.accent, fontSize: 11, fontWeight: 600,
+          }}
         >
-          <Menu className="w-4 h-4" /> Configure
+          <LayoutDashboard size={13} /> Configure
         </button>
       </header>
 
-      {/* ── Body ───────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
+      {/* ══ BODY ════════════════════════════════════════════════════════════ */}
+      <div className="flex flex-1 overflow-hidden min-h-0 relative">
 
-        {/* ── Desktop left sidebar ─────────────────────────────────────────── */}
+        {/* ── Left configuration panel (desktop) ───────────────────────── */}
         <aside
-          className="hidden md:flex flex-col overflow-hidden shrink-0"
-          style={{ width: 268, borderRight: `1px solid ${SB_BORDER}`, background: SB_BG }}
+          className="hidden md:flex flex-col shrink-0 overflow-hidden transition-all duration-300 ease-in-out"
+          style={{
+            width: panelOpen ? 264 : 0,
+            borderRight: panelOpen ? `1px solid ${T.border}` : "none",
+            background: T.glassBright,
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            overflow: "hidden",
+          }}
         >
-          <ScrollArea className="flex-1">
-            <ConfigPanel input={input} setInput={setInput} />
-          </ScrollArea>
-          <div className="p-4 shrink-0" style={{ borderTop: `1px solid ${SB_BORDER}` }}>
-            <Button
-              className="w-full gap-2 font-semibold"
-              onClick={generate}
-              style={{ background: "#c1672a", color: "#fff0e0", border: "none" }}
-            >
-              <RefreshCw className="w-4 h-4" /> Generate Layout
-            </Button>
+          <div style={{ width: 264, height: "100%", display: "flex", flexDirection: "column" }}>
+            {/* Panel header */}
+            <div className="px-5 py-4 shrink-0 flex items-center justify-between" style={{ borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: T.textSec }}>
+                Configuration
+              </span>
+            </div>
+            <ConfigPanel input={input} setInput={setInput} onGenerate={generate} />
           </div>
         </aside>
 
-        {/* ── Main canvas area ─────────────────────────────────────────────── */}
-        <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-
-          {/* View tabs + floor selector */}
-          {result && (
+        {/* ── Canvas / main area ─────────────────────────────────────────── */}
+        <main
+          className="flex-1 flex flex-col overflow-hidden min-w-0 relative"
+          style={{
+            background: T.bg,
+            backgroundImage: DOT_GRID,
+            backgroundSize: "28px 28px",
+          }}
+        >
+          {/* ── Floating top toolbar (appears after generate) ──────────── */}
+          {hasGenerated && result && (
             <div
-              className="shrink-0 flex items-center gap-0 px-3 overflow-x-auto"
-              style={{ borderBottom: `1px solid ${SB_BORDER}`, background: SB_BG }}
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-1.5 py-1.5"
+              style={{ ...glassPanel, borderRadius: 14 }}
             >
-              {/* Mobile configure inline button */}
-              <button
-                className="md:hidden flex items-center gap-1 mr-3 py-2 text-xs"
-                style={{ color: "#6a7850" }}
-                onClick={() => setSidebarOpen(true)}
-              >
-                <Menu className="w-3.5 h-3.5" />
-              </button>
-
               {/* 2D / 3D toggle */}
-              <div className="flex items-center pt-2 pb-1 gap-1 mr-3">
-                {(["2d", "3d"] as ViewMode[]).map(mode => (
-                  <button
-                    key={mode}
-                    onClick={() => setViewMode(mode)}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-all"
-                    style={{
-                      background: viewMode === mode ? "rgba(193,103,42,0.18)" : "transparent",
-                      color: viewMode === mode ? "#c1672a" : "#6a7850",
-                      border: viewMode === mode ? "1px solid rgba(193,103,42,0.35)" : "1px solid transparent",
-                    }}
-                  >
-                    {mode === "2d" ? <><Grid3X3 className="w-3 h-3" /> 2D Plan</>
-                                  : <><Box className="w-3 h-3" /> 3D View</>}
-                  </button>
-                ))}
-              </div>
+              {([
+                { m: "2d" as ViewMode, icon: Grid3X3, label: "2D Plan" },
+                { m: "3d" as ViewMode, icon: Box,      label: "3D View" },
+              ]).map(({ m, icon: Icon, label }) => (
+                <button
+                  key={m}
+                  onClick={() => setViewMode(m)}
+                  className="flex items-center gap-1.5 transition-all"
+                  style={{
+                    height: 30, paddingInline: 14, borderRadius: 10,
+                    background: viewMode === m ? T.accentDim : "transparent",
+                    border: `1px solid ${viewMode === m ? T.accentBorder : "transparent"}`,
+                    color: viewMode === m ? T.accent : T.textSec,
+                    fontSize: 11, fontWeight: 600,
+                  }}
+                >
+                  <Icon size={12} />
+                  {label}
+                </button>
+              ))}
 
               {/* Floor tabs — 2D only */}
-              {viewMode === "2d" && (
-                <div className="flex items-center gap-1 pt-0.5">
-                  <div className="w-px h-5 mx-1" style={{ background: SB_BORDER }} />
+              {viewMode === "2d" && floorTabs.length > 1 && (
+                <>
+                  <div style={{ width: 1, height: 20, background: T.border, margin: "0 4px" }} />
                   {floorTabs.map(i => (
                     <button
                       key={i}
                       onClick={() => setActiveFloor(i)}
-                      className="px-2.5 py-1.5 text-xs font-medium rounded-t border-b-2 transition-colors whitespace-nowrap"
+                      className="transition-all"
                       style={{
-                        borderBottomColor: activeFloor === i ? "#c1672a" : "transparent",
-                        color:   activeFloor === i ? "#c1672a" : "#7a8a60",
-                        background: activeFloor === i ? "rgba(193,103,42,0.08)" : "transparent",
+                        height: 30, paddingInline: 12, borderRadius: 10,
+                        background: activeFloor === i ? "rgba(160,188,120,0.14)" : "transparent",
+                        border: `1px solid ${activeFloor === i ? "rgba(160,188,120,0.30)" : "transparent"}`,
+                        color: activeFloor === i ? T.textHead : T.textSec,
+                        fontSize: 11, fontWeight: 600,
                       }}
                     >
                       {floorLabel(i)}
                     </button>
                   ))}
-                </div>
-              )}
-
-              {/* Mesh count — 3D only, desktop */}
-              {viewMode === "3d" && scene3d && (
-                <div className="ml-auto pr-2 text-xs hidden sm:block" style={{ color: "#6a7850" }}>
-                  {scene3d.meshes.length} geometry meshes
-                </div>
+                </>
               )}
             </div>
           )}
 
-          {/* Canvas / viewer */}
-          <div
-            className="flex-1 min-h-0 overflow-auto flex items-start justify-center"
-            style={{ background: "#0f1a08" }}
-          >
-            {!hasGenerated ? (
-              <div className="flex flex-col items-center justify-center text-center mt-12 px-6 max-w-sm w-full">
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-                  style={{ background: "rgba(193,103,42,0.15)" }}
-                >
-                  <Building2 className="w-7 h-7" style={{ color: "#c1672a" }} />
+          {/* ── Canvas content ─────────────────────────────────────────── */}
+          <div className="flex-1 min-h-0 overflow-auto flex items-center justify-center">
+
+            {/* Pre-generate welcome */}
+            {!hasGenerated && (
+              <div className="flex flex-col items-center text-center px-8 max-w-sm w-full">
+                <div style={{
+                  width: 68, height: 68, borderRadius: 20,
+                  background: "rgba(200,120,56,0.10)",
+                  border: `1px solid rgba(200,120,56,0.22)`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  marginBottom: 20,
+                  boxShadow: "0 0 40px rgba(200,120,56,0.10)",
+                }}>
+                  <Building2 size={30} style={{ color: T.accent }} />
                 </div>
-                <h2 className="text-lg font-semibold mb-2" style={{ color: SB_TEXT }}>Ready to Plan</h2>
-                <p className="text-sm mb-6" style={{ color: "#6a7850" }}>
-                  Configure your plot, then generate a full architectural model — 2D floor plans
-                  with furniture and a complete 3D geometry.
+                <h2 style={{ fontSize: 22, fontWeight: 700, color: T.textPri, letterSpacing: "-0.02em", marginBottom: 10 }}>
+                  Ready to Plan
+                </h2>
+                <p style={{ fontSize: 13, color: T.textSec, lineHeight: 1.7, marginBottom: 28 }}>
+                  Configure your plot parameters, then generate a complete architectural model with 2D floor plans and a photorealistic 3D view.
                 </p>
-                <Button
+                <button
                   onClick={generate}
-                  className="gap-2 w-full max-w-xs"
-                  style={{ background: "#c1672a", color: "#fff0e0", border: "none" }}
+                  className="flex items-center justify-center gap-2.5 transition-all"
+                  style={{
+                    width: "100%", maxWidth: 260, height: 44, borderRadius: 12,
+                    background: T.accent, color: "#fff8ee",
+                    fontWeight: 700, fontSize: 13, letterSpacing: "0.04em",
+                    border: "none", boxShadow: "0 4px 24px rgba(200,120,56,0.35)",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#d98840"; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = T.accent; }}
                 >
-                  <RefreshCw className="w-4 h-4" /> Generate My Layout
-                </Button>
+                  <RefreshCw size={15} /> Generate My Layout
+                </button>
               </div>
+            )}
 
-            ) : errors.length > 0 ? (
+            {/* Errors */}
+            {hasGenerated && errors.length > 0 && (
               <div
-                className="mt-10 rounded-lg p-5 max-w-md w-full mx-4"
-                style={{ background: "rgba(193,60,30,0.12)", border: "1px solid rgba(193,60,30,0.35)" }}
+                className="max-w-md w-full mx-4 p-5 rounded-2xl"
+                style={{
+                  background: "rgba(180,50,30,0.10)",
+                  border: "1px solid rgba(180,50,30,0.28)",
+                  backdropFilter: "blur(12px)",
+                }}
               >
-                <div className="flex items-center gap-2 mb-3">
-                  <AlertTriangle className="w-4 h-4" style={{ color: "#e05030" }} />
-                  <span className="font-medium text-sm" style={{ color: "#e05030" }}>Cannot Generate Layout</span>
+                <div className="flex items-center gap-2.5 mb-4">
+                  <AlertTriangle size={15} style={{ color: "#e05030" }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#e05030" }}>Cannot Generate Layout</span>
                 </div>
-                <ul className="space-y-2">
+                <div className="space-y-2">
                   {errors.map((e, i) => (
-                    <li key={i} className="text-sm flex gap-2" style={{ color: "#c08070" }}>
-                      <ChevronRight className="w-3 h-3 mt-0.5 shrink-0" /> {e.message}
-                    </li>
+                    <div key={i} className="flex gap-2 items-start" style={{ fontSize: 12, color: "#c08070" }}>
+                      <ChevronRight size={12} style={{ marginTop: 2, flexShrink: 0 }} />
+                      {e.message}
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
+            )}
 
-            ) : result && viewMode === "2d" ? (
-              <div className="p-3 sm:p-5 w-full h-full flex items-start justify-center">
+            {/* 2D Floor plan */}
+            {result && viewMode === "2d" && (
+              <div className="p-4 sm:p-6 w-full h-full flex items-start justify-center pt-16">
                 <FloorPlanCanvas
                   output={result.output}
                   floor={activeFloor}
@@ -426,271 +673,168 @@ export default function HousePlannerPage() {
                   onSelectRoom={setSelectedRoomId}
                 />
               </div>
+            )}
 
-            ) : result && viewMode === "3d" && scene3d ? (
+            {/* 3D View */}
+            {result && viewMode === "3d" && scene3d && (
               <div className="w-full h-full" style={{ minHeight: 320 }}>
                 <Suspense fallback={
-                  <div className="flex items-center justify-center h-full text-sm" style={{ color: "#6a7850" }}>
+                  <div className="flex items-center justify-center h-full gap-3"
+                    style={{ color: T.textSec, fontSize: 13 }}>
+                    <RefreshCw size={14} className="animate-spin" />
                     Loading 3D engine…
                   </div>
                 }>
                   <ThreeViewer scene={scene3d} />
                 </Suspense>
               </div>
-            ) : null}
+            )}
           </div>
         </main>
 
-        {/* ── Desktop right summary panel ─────────────────────────────────── */}
+        {/* ── Right summary panel (desktop, after generation) ──────────── */}
         {result && (
           <aside
-            className="hidden lg:flex flex-col overflow-hidden shrink-0"
-            style={{ width: 220, borderLeft: `1px solid ${SB_BORDER}`, background: SB_BG }}
+            className="hidden lg:flex flex-col shrink-0 overflow-hidden"
+            style={{
+              width: 216,
+              borderLeft: `1px solid ${T.border}`,
+              background: T.glassBright,
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+            }}
           >
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-4">
+            {/* Panel header */}
+            <div className="px-4 py-4 shrink-0" style={{ borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: T.textSec }}>
+                Analysis
+              </span>
+            </div>
 
-                {/* Summary */}
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={SB_HEAD}>Summary</h3>
-                  <div className="space-y-2">
-                    {[
-                      ["Built-up Area",  sqftStr(result.output.metadata.totalBuiltUpArea)],
-                      ["Plot Coverage",  `${(result.output.metadata.plotCoverageRatio * 100).toFixed(1)}%`],
-                      ["Plot Size",      `${mToFt(input.plotWidth)}′ × ${mToFt(input.plotDepth)}′`],
-                      ["Total Rooms",    `${result.output.rooms.length}`],
-                      ["Doors",          `${result.output.doors.length}`],
-                      ["Windows",        `${result.output.windows.length}`],
-                      ...(scene3d ? [["3D Meshes", `${scene3d.meshes.length}`]] : []),
-                    ].map(([k, v]) => (
-                      <div key={k} className="flex justify-between text-sm">
-                        <span style={{ color: SB_MUTED }}>{k}</span>
-                        <span className="font-medium text-right ml-2" style={{ color: "#c8d0a8" }}>{v}</span>
-                      </div>
-                    ))}
-                    {result.output.metadata.vastuScore >= 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span style={{ color: SB_MUTED }}>Vastu Score</span>
-                        <span
-                          className="font-medium"
-                          style={{ color: result.output.metadata.vastuScore >= 70 ? "#78b858" : "#c89040" }}
-                        >
-                          {result.output.metadata.vastuScore}/100
-                        </span>
-                      </div>
-                    )}
-                  </div>
+            <div className="flex-1 overflow-y-auto p-4" style={{ scrollbarWidth: "none" }}>
+
+              {/* Metrics */}
+              <div style={{ marginBottom: 4 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em",
+                  textTransform: "uppercase", color: T.textHead, marginBottom: 8 }}>
+                  Metrics
                 </div>
+                <div style={{ borderTop: `1px solid ${T.border}` }}>
+                  <StatRow label="Built-up Area" value={`${toSqft(result.output.metadata.totalBuiltUpArea)} sqft`} />
+                  <StatRow label="Plot Coverage" value={`${(result.output.metadata.plotCoverageRatio * 100).toFixed(1)}%`} />
+                  <StatRow label="Plot" value={`${mToFt(input.plotWidth)}′ × ${mToFt(input.plotDepth)}′`} />
+                  <StatRow label="Total Rooms" value={`${result.output.rooms.length}`} />
+                  <StatRow label="Openings" value={`${result.output.doors.length}D · ${result.output.windows.length}W`} />
+                  {scene3d && <StatRow label="3D Meshes" value={`${scene3d.meshes.length}`} />}
+                  {result.output.metadata.vastuScore >= 0 && (
+                    <StatRow
+                      label="Vastu Score"
+                      value={`${result.output.metadata.vastuScore}/100`}
+                      highlight={result.output.metadata.vastuScore >= 70}
+                    />
+                  )}
+                </div>
+              </div>
 
-                <Separator style={{ background: SB_BORDER }} />
+              {/* Vastu badge */}
+              {result.output.metadata.vastuScore >= 70 && (
+                <div
+                  className="flex items-center gap-2 p-2.5 rounded-xl mb-4"
+                  style={{ background: T.greenDim, border: `1px solid rgba(128,184,80,0.22)` }}
+                >
+                  <CheckCircle2 size={13} style={{ color: T.green, flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: T.textHead, fontWeight: 600 }}>
+                    Vastu Compliant
+                  </span>
+                </div>
+              )}
 
-                {/* Room list */}
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={SB_HEAD}>
-                    {viewMode === "3d" ? "All Rooms" : `${floorLabel(activeFloor)} Rooms`}
-                  </h3>
-                  <div className="space-y-0.5">
-                    {result.output.rooms
-                      .filter(r => viewMode === "3d" || r.floor === activeFloor)
-                      .map(room => (
+              {/* Room list */}
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em",
+                  textTransform: "uppercase", color: T.textHead, marginBottom: 8 }}>
+                  {viewMode === "3d" ? "All Rooms" : `${floorLabel(activeFloor)} Floor`}
+                </div>
+                <div className="space-y-0.5">
+                  {result.output.rooms
+                    .filter(r => viewMode === "3d" || r.floor === activeFloor)
+                    .map(room => {
+                      const active = selectedRoomId === room.id;
+                      return (
                         <button
                           key={room.id}
-                          onClick={() => setSelectedRoomId(selectedRoomId === room.id ? null : room.id)}
-                          className="w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 transition-colors"
+                          onClick={() => setSelectedRoomId(active ? null : room.id)}
+                          className="w-full text-left flex items-center gap-2 py-1.5 px-2.5 rounded-lg transition-all"
                           style={{
-                            background: selectedRoomId === room.id ? "rgba(193,103,42,0.20)" : "transparent",
-                            color:      selectedRoomId === room.id ? "#e8a060" : "#c8d0a8",
+                            background: active ? T.accentDim : "transparent",
+                            border: `1px solid ${active ? T.accentBorder : "transparent"}`,
                           }}
                         >
-                          <div
-                            className="w-2.5 h-2.5 rounded-sm shrink-0"
-                            style={{ background: ROOM_COLORS[room.type] ?? "#f1f5f9", border: "1px solid #60704a" }}
-                          />
-                          <span className="flex-1 font-medium truncate">{room.name}</span>
-                          {viewMode === "3d" && (
-                            <span className="text-[9px]" style={{ color: "#506038" }}>F{room.floor}</span>
-                          )}
-                          <span style={{ color: "#6a7850" }}>{toSqft(room.area)}</span>
+                          <div style={{
+                            width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                            background: ROOM_COLORS[room.type] ?? "#f1f5f9",
+                          }} />
+                          <span style={{ fontSize: 11, color: active ? T.accent : T.textSec, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {ROOM_LABELS[room.type] ?? room.type}
+                          </span>
+                          <span style={{ fontSize: 10, color: T.textMut, fontFamily: "ui-monospace, monospace", flexShrink: 0 }}>
+                            {Math.round(room.area * 10.764)}
+                          </span>
                         </button>
-                      ))}
-                  </div>
+                      );
+                    })}
                 </div>
-
-                {/* Selected room detail */}
-                {selectedRoom && (
-                  <>
-                    <Separator style={{ background: SB_BORDER }} />
-                    <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={SB_HEAD}>
-                        Room Details
-                      </h3>
-                      <div
-                        className="rounded-lg p-3 space-y-2"
-                        style={{ background: "#1a2610", border: `1px solid ${SB_BORDER}` }}
-                      >
-                        <div className="font-medium text-sm" style={{ color: SB_TEXT }}>
-                          {selectedRoom.name}
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5 text-xs">
-                          {[
-                            ["Width",  `${(selectedRoom.width  * M_TO_FT).toFixed(1)} ft`],
-                            ["Depth",  `${(selectedRoom.depth  * M_TO_FT).toFixed(1)} ft`],
-                            ["Area",   sqftStr(selectedRoom.area)],
-                            ["Vastu",  selectedRoom.vastuZone],
-                          ].map(([k, v]) => (
-                            <>
-                              <div key={`k${k}`} style={{ color: SB_MUTED }}>{k}</div>
-                              <div key={`v${k}`} style={{ color: "#c8d0a8" }}>{v}</div>
-                            </>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* Warnings */}
-                {result.output.metadata.warnings.length > 0 ? (
-                  <>
-                    <Separator style={{ background: SB_BORDER }} />
-                    <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1"
-                        style={SB_HEAD}>
-                        <AlertTriangle className="w-3 h-3" style={{ color: "#c89040" }} /> Warnings
-                      </h3>
-                      <div className="space-y-1.5">
-                        {result.output.metadata.warnings.slice(0, 5).map((w, i) => (
-                          <div
-                            key={i}
-                            className="text-xs leading-relaxed rounded px-2 py-1.5"
-                            style={{ color: "#c8a060", background: "rgba(200,144,64,0.10)", border: "1px solid rgba(200,144,64,0.20)" }}
-                          >
-                            {w}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    className="flex items-center gap-2 text-xs rounded-lg px-3 py-2"
-                    style={{ color: "#78b858", background: "rgba(120,184,88,0.10)", border: "1px solid rgba(120,184,88,0.20)" }}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> No planning warnings
-                  </div>
-                )}
-
-                {/* Legend */}
-                <Separator style={{ background: SB_BORDER }} />
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1"
-                    style={SB_HEAD}>
-                    <Info className="w-3 h-3" /> Legend
-                  </h3>
-                  <div className="space-y-1">
-                    {Object.entries(ROOM_LABELS)
-                      .filter(([k]) => result.output.rooms.some(r => r.type === k))
-                      .map(([k, label]) => (
-                        <div key={k} className="flex items-center gap-2 text-xs" style={{ color: SB_MUTED }}>
-                          <div
-                            className="w-3 h-3 rounded-sm shrink-0"
-                            style={{ background: ROOM_COLORS[k] ?? "#f1f5f9", border: "1px solid #60704a" }}
-                          />
-                          {label}
-                        </div>
-                      ))}
-                  </div>
-                </div>
-
               </div>
-            </ScrollArea>
+            </div>
           </aside>
         )}
       </div>
 
-      {/* ── Mobile / tablet bottom summary bar (hidden lg+) ────────────────── */}
-      {result && (
-        <div
-          className="lg:hidden shrink-0 px-4 py-2 flex items-center gap-4 overflow-x-auto"
-          style={{ borderTop: `1px solid ${SB_BORDER}`, background: SB_BG }}
-        >
-          <div className="flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: "#c8d0a8" }}>
-            <Building2 className="w-3 h-3 shrink-0" style={{ color: "#78b858" }} />
-            {sqftStr(result.output.metadata.totalBuiltUpArea)}
-          </div>
-          <div className="text-xs whitespace-nowrap" style={{ color: SB_MUTED }}>
-            {mToFt(input.plotWidth)}′ × {mToFt(input.plotDepth)}′
-          </div>
-          <div className="text-xs whitespace-nowrap" style={{ color: SB_MUTED }}>
-            {result.output.rooms.length} rooms
-          </div>
-          {result.output.metadata.vastuScore >= 0 && (
-            <div
-              className="text-xs whitespace-nowrap"
-              style={{ color: result.output.metadata.vastuScore >= 70 ? "#78b858" : "#c89040" }}
-            >
-              Vastu {result.output.metadata.vastuScore}/100
-            </div>
-          )}
-          {result.output.metadata.warnings.length > 0 && (
-            <div className="flex items-center gap-1 text-xs whitespace-nowrap" style={{ color: "#c8a060" }}>
-              <AlertTriangle className="w-3 h-3" />
-              {result.output.metadata.warnings.length} warning{result.output.metadata.warnings.length > 1 ? "s" : ""}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Mobile sidebar drawer ──────────────────────────────────────────── */}
-      {sidebarOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          {/* Dimmed backdrop */}
+      {/* ══ MOBILE DRAWER ═══════════════════════════════════════════════════ */}
+      {mobilePanel && (
+        <>
+          {/* Backdrop */}
           <div
-            className="absolute inset-0"
-            style={{ background: "rgba(0,0,0,0.65)" }}
-            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 z-40"
+            style={{ background: "rgba(0,0,0,0.60)", backdropFilter: "blur(4px)" }}
+            onClick={() => setMobilePanel(false)}
           />
-          {/* Drawer panel */}
+          {/* Drawer */}
           <div
-            className="absolute left-0 top-0 bottom-0 flex flex-col overflow-hidden"
+            className="fixed bottom-0 left-0 right-0 z-50 flex flex-col"
             style={{
-              width: "min(88vw, 320px)",
-              background: SB_BG,
-              borderRight: `1px solid ${SB_BORDER}`,
+              ...glassPanel,
+              borderRadius: "20px 20px 0 0",
+              maxHeight: "88vh",
+              border: `1px solid ${T.border}`,
+              borderBottom: "none",
             }}
           >
+            {/* Drawer handle */}
+            <div className="flex justify-center pt-3 pb-1 shrink-0">
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: T.border }} />
+            </div>
             {/* Drawer header */}
-            <div
-              className="flex items-center justify-between px-4 py-3 shrink-0"
-              style={{ borderBottom: `1px solid ${SB_BORDER}` }}
-            >
-              <span className="font-semibold text-sm" style={{ color: SB_TEXT }}>Configure Plot</span>
+            <div className="flex items-center justify-between px-5 py-3 shrink-0" style={{ borderBottom: `1px solid ${T.border}` }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.textPri, letterSpacing: "-0.01em" }}>
+                Configure Layout
+              </span>
               <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-1 rounded"
-                style={{ color: SB_MUTED }}
+                onClick={() => setMobilePanel(false)}
+                style={{
+                  width: 28, height: 28, borderRadius: 8,
+                  background: T.glassBright, border: `1px solid ${T.border}`,
+                  color: T.textSec, display: "flex", alignItems: "center", justifyContent: "center",
+                }}
               >
-                <X className="w-5 h-5" />
+                <X size={14} />
               </button>
             </div>
-
-            {/* Scrollable form */}
-            <ScrollArea className="flex-1">
-              <ConfigPanel input={input} setInput={setInput} />
-            </ScrollArea>
-
-            {/* Generate button */}
-            <div className="p-4 shrink-0" style={{ borderTop: `1px solid ${SB_BORDER}` }}>
-              <Button
-                className="w-full gap-2 font-semibold"
-                onClick={generate}
-                style={{ background: "#c1672a", color: "#fff0e0", border: "none" }}
-              >
-                <RefreshCw className="w-4 h-4" /> Generate Layout
-              </Button>
+            <div style={{ flex: 1, overflow: "hidden" }}>
+              <ConfigPanel input={input} setInput={setInput} onGenerate={generate} />
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
