@@ -1,8 +1,8 @@
 import type { Wall, Door, Window as WinType } from "@/lib/layoutEngine";
 import type { BoxSpec } from "./types";
 import {
-  FRAME_W, FRAME_D, GLASS_T,
-  DOOR_H_INT, FLOOR_TO_FLOOR,
+  FRAME_W, GLASS_T,
+  DOOR_H_INT, FLOOR_TO_FLOOR, PLINTH_H,
   WIN_SILL, WIN_H, VENT_SILL, VENT_H,
   EXT_WALL_T, INT_WALL_T,
 } from "./constants";
@@ -13,9 +13,6 @@ function wallRotY(wall: Wall): number {
 }
 
 // ─── Door frames ──────────────────────────────────────────────────────────────
-// Each door gets: two vertical jambs + a horizontal head casing.
-// Frame depth matches the wall thickness.
-
 export function buildDoorFrames(doors: Door[], walls: Wall[]): BoxSpec[] {
   const specs: BoxSpec[] = [];
   const wallMap = new Map(walls.map(w => [w.id, w]));
@@ -27,36 +24,37 @@ export function buildDoorFrames(doors: Door[], walls: Wall[]): BoxSpec[] {
 
     const T    = wall.type === "external" ? EXT_WALL_T : INT_WALL_T;
     const dH   = Math.min(door.height, DOOR_H_INT);
-    const baseY = door.floor * FLOOR_TO_FLOOR;
+    const baseY = PLINTH_H + door.floor * FLOOR_TO_FLOOR;
     const ry    = wallRotY(wall);
     const fw    = FRAME_W;
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
 
-    // Two vertical jambs (left / right sides of opening)
+    // Vertical jambs (left / right)
     for (const side of [-1, 1]) {
       specs.push({
-        id:   `df-${door.id}-jamb${ctr++}`,
-        role: "door-frame",
-        w:    fw,
-        h:    dH,
-        d:    T + 0.01,
-        cx:   door.x + Math.cos(Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1)) * side * (door.width / 2 - fw / 2),
-        cy:   baseY + dH / 2,
-        cz:   door.y + Math.sin(Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1)) * side * (door.width / 2 - fw / 2),
+        id:    `df-${door.id}-jamb${ctr++}`,
+        role:  "door-frame",
+        w:     fw,
+        h:     dH,
+        d:     T + 0.01,
+        cx:    door.x + Math.cos(angle) * side * (door.width / 2 - fw / 2),
+        cy:    baseY + dH / 2,
+        cz:    door.y + Math.sin(angle) * side * (door.width / 2 - fw / 2),
         ry,
         floor: door.floor,
       });
     }
 
-    // Horizontal head (lintel casing)
+    // Horizontal head casing
     specs.push({
-      id:   `df-${door.id}-head`,
-      role: "door-frame",
-      w:    door.width,
-      h:    fw,
-      d:    T + 0.01,
-      cx:   door.x,
-      cy:   baseY + dH + fw / 2,
-      cz:   door.y,
+      id:    `df-${door.id}-head${ctr++}`,
+      role:  "door-frame",
+      w:     door.width,
+      h:     fw,
+      d:     T + 0.01,
+      cx:    door.x,
+      cy:    baseY + dH + fw / 2,
+      cz:    door.y,
       ry,
       floor: door.floor,
     });
@@ -77,26 +75,17 @@ export function buildWindowFrames(windows: WinType[], walls: Wall[]): BoxSpec[] 
 
     const T     = wall.type === "external" ? EXT_WALL_T : INT_WALL_T;
     const sill  = win.type === "ventilator" ? VENT_SILL : (win.sillHeight ?? WIN_SILL);
-    const wH    = win.type === "ventilator" ? VENT_H : win.height;
+    const wH    = win.type === "ventilator" ? VENT_H    : win.height;
     const wW    = win.width;
-    const baseY = win.floor * FLOOR_TO_FLOOR;
+    const baseY = PLINTH_H + win.floor * FLOOR_TO_FLOOR;
     const ry    = wallRotY(wall);
-    const fw    = FRAME_W * 0.8; // slimmer window frame
+    const fw    = FRAME_W * 0.8;
 
-    // Four frame pieces: top rail, bottom sill rail, left stile, right stile
-    const frameH = sill + wH;
-    const pieces: Array<{ w: number; h: number; cyOff: number; czOff: number }> = [
-      // Bottom sill rail
-      { w: wW, h: fw, cyOff: sill + fw / 2, czOff: 0 },
-      // Top rail
-      { w: wW, h: fw, cyOff: sill + wH - fw / 2, czOff: 0 },
-    ];
+    const angle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
+    const dirX  = Math.cos(angle);
+    const dirZ  = Math.sin(angle);
 
-    const wallAngle = Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
-    const dirX = Math.cos(wallAngle);
-    const dirZ = Math.sin(wallAngle);
-
-    // Stiles (left and right)
+    // Stiles (left / right)
     for (const side of [-1, 1]) {
       specs.push({
         id:   `wf-${win.id}-stile${ctr++}`,
@@ -112,24 +101,25 @@ export function buildWindowFrames(windows: WinType[], walls: Wall[]): BoxSpec[] 
       });
     }
 
-    for (const p of pieces) {
-      specs.push({
-        id:   `wf-${win.id}-rail${ctr++}`,
-        role: "window-frame",
-        w:    p.w,
-        h:    p.h,
-        d:    T + 0.01,
-        cx:   win.x,
-        cy:   baseY + p.cyOff,
-        cz:   win.y,
-        ry,
-        floor: win.floor,
-      });
-    }
+    // Bottom sill rail
+    specs.push({
+      id: `wf-${win.id}-sillrail${ctr++}`, role: "window-frame",
+      w: wW, h: fw, d: T + 0.01,
+      cx: win.x, cy: baseY + sill + fw / 2, cz: win.y,
+      ry, floor: win.floor,
+    });
+
+    // Top rail
+    specs.push({
+      id: `wf-${win.id}-toprail${ctr++}`, role: "window-frame",
+      w: wW, h: fw, d: T + 0.01,
+      cx: win.x, cy: baseY + sill + wH - fw / 2, cz: win.y,
+      ry, floor: win.floor,
+    });
 
     // Glass pane
     specs.push({
-      id:   `wf-${win.id}-glass`,
+      id:   `wf-${win.id}-glass${ctr++}`,
       role: "window-glass",
       w:    wW - fw * 2,
       h:    wH - fw * 2,

@@ -1,0 +1,2 @@
+- [Geometry engine PLINTH_H offset](geometry-plinth-offset.md) — all builder baseY calculations must add PLINTH_H (0.45m) so the building sits on the plinth.
+- [Geometry engine RCC proportions](geometry-rcc-proportions.md) — key dimensional decisions for realistic Indian RCC residential construction.

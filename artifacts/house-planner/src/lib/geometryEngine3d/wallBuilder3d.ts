@@ -1,7 +1,7 @@
 import type { Wall, Door, Window as WinType } from "@/lib/layoutEngine";
 import type { BoxSpec, MeshRole } from "./types";
 import {
-  EXT_WALL_T, INT_WALL_T, WALL_H, FLOOR_TO_FLOOR,
+  EXT_WALL_T, INT_WALL_T, WALL_H, FLOOR_TO_FLOOR, PLINTH_H,
   DOOR_H_INT, WIN_SILL, WIN_H, VENT_SILL, VENT_H,
 } from "./constants";
 
@@ -9,16 +9,16 @@ import {
 function projectOnWall(ox: number, oy: number, wall: Wall): number {
   const dx = wall.x2 - wall.x1;
   const dy = wall.y2 - wall.y1;
-  const L2 = dx * dx + dy * dy;
-  return ((ox - wall.x1) * dx + (oy - wall.y1) * dy) / Math.sqrt(L2);
+  const L  = Math.sqrt(dx * dx + dy * dy);
+  return ((ox - wall.x1) * dx + (oy - wall.y1) * dy) / L;
 }
 
 // ─── Opening descriptor in wall-local space ──────────────────────────────────
 interface Opening {
-  hCenter: number; // distance from wall start (m)
-  hHalf:   number; // half the opening width
-  vBot:    number; // bottom height from floor (0 for doors)
-  vTop:    number; // top height from floor
+  hCenter: number;
+  hHalf:   number;
+  vBot:    number;
+  vTop:    number;
 }
 
 function gatherOpenings(wall: Wall, doors: Door[], windows: WinType[]): Opening[] {
@@ -36,14 +36,13 @@ function gatherOpenings(wall: Wall, doors: Door[], windows: WinType[]): Opening[
 
   for (const w of windows) {
     if (w.wallId !== wall.id) continue;
-    const sill = w.sillHeight ?? WIN_SILL;
-    const wh   = w.type === "ventilator" ? VENT_H : w.height;
-    const ws   = w.type === "ventilator" ? VENT_SILL : sill;
+    const sill = w.type === "ventilator" ? VENT_SILL : (w.sillHeight ?? WIN_SILL);
+    const wh   = w.type === "ventilator" ? VENT_H    : w.height;
     ops.push({
       hCenter: projectOnWall(w.x, w.y, wall),
       hHalf:   w.width / 2,
-      vBot:    ws,
-      vTop:    ws + wh,
+      vBot:    sill,
+      vTop:    sill + wh,
     });
   }
 
@@ -60,22 +59,20 @@ function segCentre(wall: Wall, dStart: number, dEnd: number): [number, number] {
 }
 
 // ─── Wall Y-rotation to align BoxGeometry width with wall direction ───────────
-function wallRotY(wall: Wall): number {
-  // BoxGeometry default: width along world X.
-  // Rotating by -atan2(dz, dx) aligns it with the wall direction in XZ plane.
+export function wallRotY(wall: Wall): number {
   return -Math.atan2(wall.y2 - wall.y1, wall.x2 - wall.x1);
 }
 
 // ─── Emit a single wall box ────────────────────────────────────────────────────
 function emit(
-  id: string,
-  role: MeshRole,
-  wall: Wall,
-  dStart: number,  // distance from wall start (m)
+  id:     string,
+  role:   MeshRole,
+  wall:   Wall,
+  dStart: number,
   dEnd:   number,
-  vBot:   number,  // height from floor (m)
+  vBot:   number,
   vTop:   number,
-  T:      number,  // wall thickness
+  T:      number,
   floor:  number,
   out:    BoxSpec[],
 ): void {
@@ -83,12 +80,12 @@ function emit(
   const ht  = vTop - vBot;
   if (len < 0.02 || ht < 0.01) return;
 
-  const baseY     = floor * FLOOR_TO_FLOOR;
-  const [cx, cz]  = segCentre(wall, dStart, dEnd);
+  // Walls start from the top of the plinth (PLINTH_H) on each floor
+  const baseY    = PLINTH_H + floor * FLOOR_TO_FLOOR;
+  const [cx, cz] = segCentre(wall, dStart, dEnd);
 
   out.push({
-    id,
-    role,
+    id, role,
     w:  len,
     h:  ht,
     d:  T,
@@ -102,8 +99,8 @@ function emit(
 
 // ─── Main wall builder ────────────────────────────────────────────────────────
 export function buildWalls(
-  walls: Wall[],
-  doors: Door[],
+  walls:   Wall[],
+  doors:   Door[],
   windows: WinType[],
 ): BoxSpec[] {
   const specs: BoxSpec[] = [];
@@ -117,7 +114,6 @@ export function buildWalls(
 
     const ops  = gatherOpenings(wall, doors, windows);
 
-    // Build horizontal intervals along the wall
     type Seg = { d0: number; d1: number; op: Opening | null };
     const segs: Seg[] = [];
     let cursor = 0;
@@ -126,7 +122,7 @@ export function buildWalls(
       const opL = Math.max(0, op.hCenter - op.hHalf);
       const opR = Math.min(L, op.hCenter + op.hHalf);
       if (opL > cursor + 0.01) segs.push({ d0: cursor, d1: opL,  op: null });
-      if (opR > opL + 0.01)    segs.push({ d0: opL,    d1: opR,  op });
+      if (opR > opL + 0.01)   segs.push({ d0: opL,    d1: opR,  op });
       cursor = opR;
     }
     if (cursor < L - 0.01) segs.push({ d0: cursor, d1: L, op: null });
@@ -140,15 +136,14 @@ export function buildWalls(
         emit(pfx, role, wall, seg.d0, seg.d1, 0, WALL_H, T, f, specs);
       } else {
         const op = seg.op;
-        // Sill piece  (below opening – only for windows)
+        // Sill piece (below opening – only for windows/ventilators)
         if (op.vBot > 0.02) {
-          emit(`${pfx}-sill`, role, wall, seg.d0, seg.d1, 0, op.vBot, T, f, specs);
+          emit(`${pfx}-sill`, role, wall, seg.d0, seg.d1, 0,      op.vBot, T, f, specs);
         }
-        // Header / lintel piece  (above opening)
+        // Header piece (above opening – between lintel top and slab soffit)
         if (WALL_H - op.vTop > 0.02) {
-          emit(`${pfx}-hdr`, role, wall, seg.d0, seg.d1, op.vTop, WALL_H, T, f, specs);
+          emit(`${pfx}-hdr`,  role, wall, seg.d0, seg.d1, op.vTop, WALL_H,  T, f, specs);
         }
-        // No side "jamb" columns needed – corners cover those
       }
     }
   }
