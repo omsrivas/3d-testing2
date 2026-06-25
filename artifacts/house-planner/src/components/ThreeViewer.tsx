@@ -542,7 +542,18 @@ function PBRMesh({
 }
 
 // ─── View presets ─────────────────────────────────────────────────────────────
-export type ViewPreset = "iso" | "top" | "dollhouse" | "exploded" | "isolated";
+export type ViewPreset =
+  | "orbit"        // free-orbit (default)
+  | "iso"          // classic isometric 45°
+  | "top"          // plan / orthographic top-down
+  | "front"        // elevation from south → looking north
+  | "rear"         // elevation from north → looking south
+  | "left"         // elevation from west  → looking east
+  | "right"        // elevation from east  → looking west
+  | "walkthrough"  // eye-level first-person (WASD)
+  | "dollhouse"    // elevated iso with roof removed
+  | "exploded"     // floors pulled apart vertically
+  | "isolated";    // single-floor focus
 
 function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
@@ -554,14 +565,48 @@ function presetCamera(
   isoFloor: number,
 ): { pos: THREE.Vector3; target: THREE.Vector3 } {
   const [cx, cy, cz] = scene.center;
-  const d = scene.diagonal;
+  const d  = scene.diagonal;
+  const bh = cy * 0.55;   // mid-building height for elevation views
 
   switch (preset) {
+    case "orbit":
+    case "iso":
+      return {
+        pos:    new THREE.Vector3(cx + d * 0.70, cy + d * 0.65, cz + d * 0.70),
+        target: new THREE.Vector3(cx, cy * 0.35, cz),
+      };
     case "top":
       return {
-        pos:    new THREE.Vector3(cx, cy + d * 1.6, cz + 0.02),
+        pos:    new THREE.Vector3(cx, cy + d * 1.65, cz + 0.001),
         target: new THREE.Vector3(cx, 0, cz),
       };
+    case "front":
+      return {
+        pos:    new THREE.Vector3(cx, bh, cz + d * 1.55),
+        target: new THREE.Vector3(cx, bh, cz),
+      };
+    case "rear":
+      return {
+        pos:    new THREE.Vector3(cx, bh, cz - d * 1.55),
+        target: new THREE.Vector3(cx, bh, cz),
+      };
+    case "left":
+      return {
+        pos:    new THREE.Vector3(cx - d * 1.55, bh, cz),
+        target: new THREE.Vector3(cx, bh, cz),
+      };
+    case "right":
+      return {
+        pos:    new THREE.Vector3(cx + d * 1.55, bh, cz),
+        target: new THREE.Vector3(cx, bh, cz),
+      };
+    case "walkthrough": {
+      const ey = isoFloor * FLOOR_TO_FLOOR + 1.7;
+      return {
+        pos:    new THREE.Vector3(cx, ey, cz + 1.5),
+        target: new THREE.Vector3(cx, ey, cz - 2.5),
+      };
+    }
     case "dollhouse":
       return {
         pos:    new THREE.Vector3(cx - d * 0.45, cy + d * 1.15, cz + d * 0.45),
@@ -570,7 +615,7 @@ function presetCamera(
     case "exploded": {
       const extra = scene.floors * FLOOR_TO_FLOOR * 1.4;
       return {
-        pos:    new THREE.Vector3(cx + d * 0.85, cy + d * 0.8 + extra * 0.4, cz + d * 0.85),
+        pos:    new THREE.Vector3(cx + d * 0.85, cy + d * 0.80 + extra * 0.4, cz + d * 0.85),
         target: new THREE.Vector3(cx, cy + extra * 0.35, cz),
       };
     }
@@ -602,13 +647,35 @@ function CameraController({
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
   const animRef = useRef<{
-    fromPos: THREE.Vector3;
+    fromPos:    THREE.Vector3;
     fromTarget: THREE.Vector3;
-    toPos: THREE.Vector3;
-    toTarget: THREE.Vector3;
-    t: number;
+    toPos:      THREE.Vector3;
+    toTarget:   THREE.Vector3;
+    t:          number;
   } | null>(null);
 
+  // Track keyboard state for walkthrough WASD movement
+  const keysRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (preset !== "walkthrough") { keysRef.current.clear(); return; }
+    const dn = (e: KeyboardEvent) => {
+      keysRef.current.add(e.code);
+      // Prevent page scroll on arrow keys when in walkthrough
+      if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code))
+        e.preventDefault();
+    };
+    const up = (e: KeyboardEvent) => keysRef.current.delete(e.code);
+    window.addEventListener("keydown", dn);
+    window.addEventListener("keyup",   up);
+    return () => {
+      window.removeEventListener("keydown", dn);
+      window.removeEventListener("keyup",   up);
+      keysRef.current.clear();
+    };
+  }, [preset]);
+
+  // Trigger smooth transition whenever preset or isoFloor changes
   useEffect(() => {
     const { pos, target } = presetCamera(preset, scene, isoFloor);
     animRef.current = {
@@ -623,28 +690,71 @@ function CameraController({
   }, [preset, isoFloor]);
 
   useFrame((_, dt) => {
+    const ctrl = controlsRef.current;
+
+    // ── Smooth animated transition ───────────────────────────────────────────
     const a = animRef.current;
-    if (!a || !controlsRef.current) return;
-    a.t = Math.min(1, a.t + dt * 2.4);
-    const e = easeInOutCubic(a.t);
-    camera.position.lerpVectors(a.fromPos, a.toPos, e);
-    controlsRef.current.target.lerpVectors(a.fromTarget, a.toTarget, e);
-    controlsRef.current.update();
-    if (a.t >= 1) animRef.current = null;
+    if (a) {
+      a.t = Math.min(1, a.t + dt * 2.0);
+      const e = easeInOutCubic(a.t);
+      camera.position.lerpVectors(a.fromPos, a.toPos, e);
+      ctrl?.target.lerpVectors(a.fromTarget, a.toTarget, e);
+      ctrl?.update();
+      if (a.t >= 1) animRef.current = null;
+    }
+
+    // ── Walkthrough: WASD / arrow-key movement ───────────────────────────────
+    if (preset === "walkthrough" && !a && ctrl) {
+      const keys = keysRef.current;
+      if (keys.size === 0) return;
+
+      const speed = dt * 3.5;
+      const eyeY  = isoFloor * FLOOR_TO_FLOOR + 1.7;
+
+      // Forward vector projected onto the horizontal plane
+      const fwd = new THREE.Vector3();
+      camera.getWorldDirection(fwd);
+      fwd.y = 0;
+      fwd.normalize();
+
+      const right = new THREE.Vector3()
+        .crossVectors(fwd, new THREE.Vector3(0, 1, 0))
+        .normalize();
+
+      const move = new THREE.Vector3();
+      if (keys.has("KeyW") || keys.has("ArrowUp"))    move.addScaledVector(fwd,    speed);
+      if (keys.has("KeyS") || keys.has("ArrowDown"))  move.addScaledVector(fwd,   -speed);
+      if (keys.has("KeyA") || keys.has("ArrowLeft"))  move.addScaledVector(right, -speed);
+      if (keys.has("KeyD") || keys.has("ArrowRight")) move.addScaledVector(right,  speed);
+
+      camera.position.add(move);
+      ctrl.target.add(move);
+
+      // Enforce eye-level height lock
+      camera.position.y = eyeY;
+      ctrl.target.y     = eyeY;
+      ctrl.update();
+    }
   });
+
+  const isWalk      = preset === "walkthrough";
+  const isElevation = ["front", "rear", "left", "right"].includes(preset);
 
   return (
     <OrbitControls
       ref={controlsRef}
       makeDefault
       enableDamping
-      dampingFactor={0.07}
-      rotateSpeed={0.85}
-      zoomSpeed={1.1}
-      panSpeed={0.85}
-      minDistance={1}
-      maxDistance={scene.diagonal * 4}
-      maxPolarAngle={Math.PI * 0.88}
+      dampingFactor={isWalk ? 0.12 : 0.07}
+      rotateSpeed={isWalk ? 0.50 : 0.85}
+      zoomSpeed={isElevation ? 0.75 : 1.10}
+      panSpeed={isWalk ? 0 : 0.85}
+      enablePan={!isWalk}
+      enableZoom
+      minDistance={isWalk ? 0.5 : 1.0}
+      maxDistance={scene.diagonal * (isWalk ? 2 : 5)}
+      minPolarAngle={isWalk ? Math.PI * 0.22 : 0}
+      maxPolarAngle={isWalk ? Math.PI * 0.74 : Math.PI * 0.88}
     />
   );
 }
@@ -899,21 +1009,27 @@ function BuildingScene({
 }
 
 // ─── Toolbar button ───────────────────────────────────────────────────────────
-function PresetBtn({
-  active, label, onClick, title,
+function Btn({
+  active, label, onClick, title, accent = false,
 }: {
-  active: boolean; label: React.ReactNode; onClick: () => void; title: string;
+  active: boolean; label: React.ReactNode; onClick: () => void; title: string; accent?: boolean;
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
-      className="flex flex-col items-center gap-0.5 px-2.5 py-1.5 rounded transition-all text-[10px] font-semibold"
+      className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded transition-all text-[9.5px] font-semibold shrink-0"
       style={{
-        background: active ? "rgba(210,130,40,0.22)" : "rgba(255,255,255,0.05)",
-        border:     `1px solid ${active ? "rgba(210,130,40,0.55)" : "rgba(255,255,255,0.09)"}`,
-        color:      active ? "#E09858" : "#9AAAB8",
-        minWidth: 48,
+        background: active
+          ? accent ? "rgba(100,180,80,0.20)" : "rgba(210,130,40,0.22)"
+          : "rgba(255,255,255,0.05)",
+        border: `1px solid ${active
+          ? accent ? "rgba(100,180,80,0.55)" : "rgba(210,130,40,0.55)"
+          : "rgba(255,255,255,0.09)"}`,
+        color: active
+          ? accent ? "#78D060" : "#E09858"
+          : "#9AAAB8",
+        minWidth: 44,
       }}
     >
       {label}
@@ -922,41 +1038,22 @@ function PresetBtn({
 }
 
 // ─── SVG icons ────────────────────────────────────────────────────────────────
-const IconTop = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="12" cy="12" r="9" /><line x1="12" y1="3" x2="12" y2="21" /><line x1="3" y1="12" x2="21" y2="12" />
-  </svg>
-);
-const IconIso = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" /><line x1="12" y1="2" x2="12" y2="22" /><line x1="2" y1="9" x2="22" y2="9" />
-  </svg>
-);
-const IconDoll = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 9l9-7 9 7v11H3Z" /><line x1="3" y1="14" x2="21" y2="14" /><line x1="9" y1="21" x2="9" y2="14" /><line x1="15" y1="21" x2="15" y2="14" />
-  </svg>
-);
-const IconExplode = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="3" width="18" height="4" rx="1" /><rect x="3" y="10" width="18" height="4" rx="1" /><rect x="3" y="17" width="18" height="4" rx="1" />
-  </svg>
-);
-const IconFloor = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="2" y="7" width="20" height="10" rx="2" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="7" y1="7" x2="7" y2="17" />
-  </svg>
-);
-const IconWire = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 9l10-7 10 7v6l-10 7L2 15Z" /><path d="M2 9l10 7 10-7" strokeDasharray="3 2" /><line x1="12" y1="16" x2="12" y2="22" strokeDasharray="3 2" />
-  </svg>
-);
-const IconSofa = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M2 10v7h20v-7" /><path d="M2 14h20" /><path d="M2 10a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3" /><line x1="5" y1="17" x2="5" y2="20" /><line x1="19" y1="17" x2="19" y2="20" />
-  </svg>
-);
+const S = (p: React.SVGProps<SVGSVGElement>) =>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...p} />;
+
+const IconOrbit  = () => <S><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0 1 10 10M2 12a10 10 0 0 0 10 10M5 5l14 14" strokeDasharray="3 2"/></S>;
+const IconIso    = () => <S><path d="M2 9l10-7 10 7v6l-10 7L2 15Z"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="9" x2="22" y2="9"/></S>;
+const IconTop    = () => <S><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="3" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="21"/><line x1="3" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="21" y2="12"/></S>;
+const IconFront  = () => <S><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="8" y1="4" x2="8" y2="18"/><line x1="16" y1="4" x2="16" y2="18"/><line x1="3" y1="10" x2="21" y2="10"/></S>;
+const IconRear   = () => <S><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="12" y1="4" x2="12" y2="18"/><path d="M3 4l18 14M21 4L3 18" strokeDasharray="2 3"/></S>;
+const IconLeft   = () => <S><path d="M9 18V6l-6 6z" fill="currentColor" stroke="none"/><rect x="10" y="4" width="11" height="16" rx="2"/><line x1="10" y1="12" x2="21" y2="12"/></S>;
+const IconRight  = () => <S><path d="M15 6v12l6-6z" fill="currentColor" stroke="none"/><rect x="3" y="4" width="11" height="16" rx="2"/><line x1="3" y1="12" x2="14" y2="12"/></S>;
+const IconWalk   = () => <S><circle cx="12" cy="5" r="2"/><path d="M10 9l-2 5h8l-2-5"/><path d="M8 14l-2 6M16 14l2 6"/><path d="M10 9l2 3 2-3"/></S>;
+const IconDoll   = () => <S><path d="M3 9l9-7 9 7v11H3Z"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="9" y1="21" x2="9" y2="14"/><line x1="15" y1="21" x2="15" y2="14"/></S>;
+const IconExplode= () => <S><rect x="3" y="2" width="18" height="5" rx="1"/><rect x="3" y="10" width="18" height="5" rx="1"/><rect x="3" y="18" width="18" height="4" rx="1"/></S>;
+const IconFloor  = () => <S><rect x="2" y="8" width="20" height="9" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="7" y1="8" x2="7" y2="17"/></S>;
+const IconWire   = () => <S><path d="M2 9l10-7 10 7v6l-10 7L2 15Z"/><path d="M2 9l10 7 10-7" strokeDasharray="3 2"/><line x1="12" y1="16" x2="12" y2="22" strokeDasharray="3 2"/></S>;
+const IconSofa   = () => <S><path d="M2 10v7h20v-7"/><path d="M2 14h20"/><path d="M2 10a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3"/><line x1="5" y1="17" x2="5" y2="20"/><line x1="19" y1="17" x2="19" y2="20"/></S>;
 
 // ─── Legend labels ────────────────────────────────────────────────────────────
 const LEGEND_ROLES: MeshRole[] = [
@@ -965,6 +1062,21 @@ const LEGEND_ROLES: MeshRole[] = [
   "stair-tread","door-frame","door-panel","door-handle",
   "window-frame","window-glass","window-sill",
 ];
+
+// ─── Divider ──────────────────────────────────────────────────────────────────
+const TBDiv = ({ color }: { color: string }) => (
+  <div className="w-px h-7 shrink-0" style={{ background: color }} />
+);
+
+// ─── Label for toolbar group ──────────────────────────────────────────────────
+const TBLabel = ({ children, color }: { children: React.ReactNode; color: string }) => (
+  <span
+    className="text-[8px] font-bold uppercase tracking-widest shrink-0 select-none"
+    style={{ color }}
+  >
+    {children}
+  </span>
+);
 
 // ─── Main exported component ──────────────────────────────────────────────────
 interface ThreeViewerProps { scene: SceneData }
@@ -990,60 +1102,98 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
   const floorName = (f: number) =>
     f === 0 ? "G" : f === scene.floors ? "Rf" : `F${f}`;
 
-  const presets: Array<{ id: ViewPreset; label: React.ReactNode; title: string }> = [
-    { id: "iso",       label: <><IconIso />Isometric</>,    title: "Isometric view" },
-    { id: "top",       label: <><IconTop />Top View</>,     title: "Orthographic top-down" },
-    { id: "dollhouse", label: <><IconDoll />Dollhouse</>,   title: "Dollhouse (roof hidden)" },
-    { id: "exploded",  label: <><IconExplode />Exploded</>, title: "Exploded floors" },
-    { id: "isolated",  label: <><IconFloor />Isolate</>,    title: "Isolate one floor" },
-  ];
+  const go = (p: ViewPreset) => setPreset(p);
 
-  const TB = "#18181B";
+  const TB  = "#18181B";
   const TBB = "#27272A";
+  const isWalk = preset === "walkthrough";
+
+  // ── Walkthrough floor (tracks isoFloor when walkthrough is active) ──────────
+  const walkFloor = isoFloor;
 
   return (
     <div className="relative w-full h-full flex flex-col" style={{ background: "#F0EDE8" }}>
 
-      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
+      {/* ══ Toolbar — two rows ════════════════════════════════════════════════ */}
       <div
-        className="shrink-0 flex items-center gap-2 px-3 py-2 overflow-x-auto"
+        className="shrink-0 flex flex-col"
         style={{ background: TB, borderBottom: `1px solid ${TBB}` }}
       >
-        <div className="flex items-center gap-1.5 mr-1">
-          {presets.map(p => (
-            <PresetBtn key={p.id} active={preset === p.id} label={p.label} title={p.title} onClick={() => setPreset(p.id)} />
-          ))}
+
+        {/* ── Row 1: Camera views ──────────────────────────────────────────── */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto">
+          <TBLabel color="#4A5A68">Views</TBLabel>
+
+          <Btn active={preset==="orbit"}  title="Orbit — free rotate around building"
+            onClick={() => go("orbit")}  label={<><IconOrbit />Orbit</>} />
+          <Btn active={preset==="iso"}    title="Isometric 45° view"
+            onClick={() => go("iso")}    label={<><IconIso />Iso</>} />
+          <Btn active={preset==="top"}    title="Plan / top-down view"
+            onClick={() => go("top")}    label={<><IconTop />Top</>} />
+
+          <TBDiv color={TBB} />
+
+          <Btn active={preset==="front"}  title="Front elevation (south → north)"
+            onClick={() => go("front")}  label={<><IconFront />Front</>} />
+          <Btn active={preset==="rear"}   title="Rear elevation (north → south)"
+            onClick={() => go("rear")}   label={<><IconRear />Rear</>} />
+          <Btn active={preset==="left"}   title="Left elevation (west → east)"
+            onClick={() => go("left")}   label={<><IconLeft />Left</>} />
+          <Btn active={preset==="right"}  title="Right elevation (east → west)"
+            onClick={() => go("right")}  label={<><IconRight />Right</>} />
+
+          <div className="ml-auto text-[9px] shrink-0" style={{ color: "#3A4A58" }}>
+            {scene.meshes.length} meshes · {scene.rooms.length} rooms
+          </div>
         </div>
 
-        <div className="w-px h-8 shrink-0" style={{ background: TBB }} />
+        {/* ── Row 2: Modes + floor + toggles ───────────────────────────────── */}
+        <div
+          className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto"
+          style={{ borderTop: `1px solid ${TBB}` }}
+        >
+          <TBLabel color="#4A5A68">Modes</TBLabel>
 
-        <div className="flex items-center gap-1">
-          <span className="text-[9px] font-semibold uppercase tracking-wide mr-0.5" style={{ color: "#5A6A78" }}>
-            Floor
-          </span>
+          <Btn active={preset==="walkthrough"} title="Walkthrough — WASD / Arrow keys to move, drag to look"
+            onClick={() => go("walkthrough")} label={<><IconWalk />Walk</>} />
+          <Btn active={preset==="dollhouse"}   title="Dollhouse — roof removed, see inside"
+            onClick={() => go("dollhouse")}   label={<><IconDoll />Doll</>} />
+          <Btn active={preset==="exploded"}    title="Exploded — floors pulled apart"
+            onClick={() => go("exploded")}    label={<><IconExplode />Explode</>} />
+
+          <TBDiv color={TBB} />
+
+          {/* Floor isolation */}
+          <TBLabel color="#4A5A68">Floor</TBLabel>
           {floorList.map(f => (
             <button
               key={f}
-              onClick={() => { setIsoFloor(f); if (preset !== "isolated") setPreset("isolated"); }}
-              className="w-8 h-7 rounded text-[11px] font-bold transition-all"
+              title={`Isolate ${floorName(f)} floor`}
+              onClick={() => {
+                setIsoFloor(f);
+                setPreset("isolated");
+              }}
+              className="w-7 h-7 rounded text-[10px] font-bold transition-all shrink-0"
               style={{
-                background: preset === "isolated" && isoFloor === f ? "#E09040" : preset === "isolated" ? "#27272A" : "rgba(255,255,255,0.05)",
-                color:  preset === "isolated" && isoFloor === f ? "#FFF" : "#7A8A98",
-                border: `1px solid ${preset === "isolated" && isoFloor === f ? "#E09040" : TBB}`,
+                background: preset === "isolated" && isoFloor === f
+                  ? "#E09040"
+                  : preset === "isolated" ? "#27272A" : "rgba(255,255,255,0.05)",
+                color: preset === "isolated" && isoFloor === f ? "#FFF" : "#7A8A98",
+                border: `1px solid ${
+                  preset === "isolated" && isoFloor === f ? "#E09040" : TBB
+                }`,
               }}
             >
               {floorName(f)}
             </button>
           ))}
-        </div>
 
-        <div className="w-px h-8 shrink-0" style={{ background: TBB }} />
+          <TBDiv color={TBB} />
 
-        <PresetBtn active={showFurniture} label={<><IconSofa />Furniture</>} title="Toggle furniture & landscape" onClick={() => setFurniture(v => !v)} />
-        <PresetBtn active={wireframe}     label={<><IconWire />Wireframe</>}  title="Wireframe overlay"            onClick={() => setWireframe(v => !v)} />
-
-        <div className="ml-auto text-[10px]" style={{ color: "#4A5A68" }}>
-          {scene.meshes.length} meshes · {scene.rooms.length} rooms
+          <Btn active={showFurniture} title="Toggle furniture & landscape" accent
+            onClick={() => setFurniture(v => !v)} label={<><IconSofa />Furniture</>} />
+          <Btn active={wireframe}     title="Wireframe overlay"
+            onClick={() => setWireframe(v => !v)} label={<><IconWire />Wireframe</>} />
         </div>
       </div>
 
@@ -1051,14 +1201,19 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
       <div className="flex-1 w-full">
         <Canvas
           shadows={{ type: THREE.PCFSoftShadowMap }}
-          gl={{ antialias: true, alpha: false, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+          gl={{
+            antialias: true,
+            alpha: false,
+            powerPreference: "high-performance",
+            toneMapping: THREE.ACESFilmicToneMapping,
+            toneMappingExposure: 1.0,
+          }}
           camera={{ position: initPos, fov: 46, near: 0.1, far: 8000 }}
           style={{ background: "#D8E4EE" }}
           resize={{ debounce: 0, scroll: false }}
         >
           <color attach="background" args={["#D8E4EE"]} />
           <fog attach="fog" args={["#D8E4EE", scene.diagonal * 5, scene.diagonal * 12]} />
-          {/* Soft shadow penumbra — spreads PCF taps for natural feathering */}
           <SoftShadows size={18} focus={0.6} samples={12} />
           <Suspense fallback={null}>
             <BuildingScene
@@ -1073,13 +1228,45 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
         </Canvas>
       </div>
 
-      {/* ── Interaction hint ──────────────────────────────────────────────────── */}
-      <div
-        className="absolute bottom-3 right-3 text-[9px] leading-relaxed pointer-events-none"
-        style={{ color: "rgba(60,50,40,0.38)" }}
-      >
-        Drag · Scroll · Right-drag to pan
-      </div>
+      {/* ── Walkthrough HUD ───────────────────────────────────────────────────── */}
+      {isWalk && (
+        <div
+          className="absolute bottom-14 left-1/2 -translate-x-1/2 rounded-xl px-4 py-2.5 pointer-events-none flex items-center gap-3"
+          style={{
+            background: "rgba(16,20,28,0.80)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <div className="text-[10px] font-bold text-white/60 uppercase tracking-widest">
+            Walkthrough
+          </div>
+          <div className="w-px h-4 bg-white/15" />
+          <div className="grid grid-cols-4 gap-0.5">
+            {[["W","↑"],["A","←"],["S","↓"],["D","→"]].map(([k, sym]) => (
+              <div key={k} className="flex flex-col items-center gap-0.5">
+                <span
+                  className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-mono font-bold"
+                  style={{ background: "rgba(255,255,255,0.12)", color: "#E0C080" }}
+                >{k}</span>
+              </div>
+            ))}
+          </div>
+          <div className="text-[9px] text-white/40">Move · Drag to look</div>
+          <div className="w-px h-4 bg-white/15" />
+          <div className="text-[9px] text-white/40">Floor {floorName(walkFloor)}</div>
+        </div>
+      )}
+
+      {/* ── Interaction hint (non-walk modes) ────────────────────────────────── */}
+      {!isWalk && (
+        <div
+          className="absolute bottom-3 right-3 text-[9px] leading-relaxed pointer-events-none"
+          style={{ color: "rgba(60,50,40,0.38)" }}
+        >
+          Drag · Scroll · Right-drag to pan
+        </div>
+      )}
 
       {/* ── Material legend ───────────────────────────────────────────────────── */}
       <div
