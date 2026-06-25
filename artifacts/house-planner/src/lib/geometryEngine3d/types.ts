@@ -11,9 +11,14 @@ export type MeshRole =
   | "balcony-slab"
   | "balcony-railing"
   | "stair-tread"
-  | "door-frame"
-  | "window-frame"
-  | "window-glass";
+  // Door parts
+  | "door-frame"      // wooden door frame (jambs + head + threshold)
+  | "door-panel"      // solid flush door leaf
+  | "door-handle"     // brushed stainless lever / pull handle
+  // Window parts
+  | "window-frame"    // anodised aluminium outer frame
+  | "window-glass"    // clear low-E glass pane
+  | "window-sill";    // polished granite / marble window sill
 
 // ─── Box mesh specification ────────────────────────────────────────────────────
 // Every geometry element is described as an axis-aligned box that may be

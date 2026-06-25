@@ -22,9 +22,14 @@ const ROLE_COLOR: Record<MeshRole, string> = {
   "balcony-slab":    "#CECAC2",   // concrete balcony slab
   "balcony-railing": "#C4C8CC",   // brushed stainless
   "stair-tread":     "#D2CEC6",   // concrete tread
-  "door-frame":      "#8B5A2C",   // warm teak wood
-  "window-frame":    "#E8E4DC",   // white anodised aluminium
-  "window-glass":    "#ACCFE8",   // clear low-E glass tint
+  // Door parts
+  "door-frame":      "#7A4820",   // dark teak / rosewood frame
+  "door-panel":      "#9B5E2A",   // medium teak flush door leaf
+  "door-handle":     "#B8B0A6",   // brushed stainless lever
+  // Window parts
+  "window-frame":    "#D8D4CC",   // white powder-coated aluminium
+  "window-glass":    "#A8CBE4",   // clear low-E glass tint
+  "window-sill":     "#EAE4D6",   // polished granite / marble sill
 };
 
 // Opacity — only glass is transparent
@@ -43,16 +48,25 @@ const ROLE_ROUGHNESS: Partial<Record<MeshRole, number>> = {
   "balcony-slab":    0.84,
   "balcony-railing": 0.24,
   "stair-tread":     0.82,
-  "door-frame":      0.68,
-  "window-frame":    0.30,
-  "window-glass":    0.03,
+  // Door parts
+  "door-frame":      0.72,   // wood grain — slightly shinier than raw concrete
+  "door-panel":      0.60,   // lacquered flush door
+  "door-handle":     0.20,   // brushed stainless
+  // Window parts
+  "window-frame":    0.28,   // anodised aluminium
+  "window-glass":    0.03,   // near-mirror glass
+  "window-sill":     0.38,   // polished granite
 };
 
 // Metalness — only steel/glass/aluminium elements
 const ROLE_METALNESS: Partial<Record<MeshRole, number>> = {
   "balcony-railing": 0.72,
-  "window-frame":    0.48,
-  "window-glass":    0.18,
+  // Door
+  "door-handle":     0.78,   // stainless lever
+  // Window
+  "window-frame":    0.52,   // anodised aluminium
+  "window-glass":    0.18,   // slight metallic tint on low-E glass
+  "window-sill":     0.04,   // subtle sheen on polished stone
 };
 
 // ─── View presets ─────────────────────────────────────────────────────────────
@@ -626,8 +640,9 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           {(
             [
               "exterior-wall","interior-wall","floor-slab","roof-slab",
-              "column","door-frame","window-frame","window-glass",
-              "balcony-slab","balcony-railing","stair-tread","parapet",
+              "column","parapet","balcony-slab","balcony-railing",
+              "stair-tread","door-frame","door-panel","door-handle",
+              "window-frame","window-glass","window-sill",
             ] as MeshRole[]
           ).map(role => (
             <div key={role} className="flex items-center gap-1.5">
