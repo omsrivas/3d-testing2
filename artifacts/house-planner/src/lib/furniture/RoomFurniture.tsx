@@ -12,6 +12,7 @@ import { Bed, Wardrobe, SideTable } from "./bedroom";
 import { CounterRun, Sink, Stove } from "./kitchen";
 import { DiningTable, DiningChair } from "./dining";
 import { WC, WashBasin, Shower } from "./bathroom";
+import { Desk, DeskChair } from "./workspace";
 import { Car } from "./parking";
 import { Tree, SmallTree, Plant, LargePlant, PlotLandscape } from "./landscape";
 
@@ -164,6 +165,20 @@ function RoomFurniture({ room }: { room: Room }) {
         <>
           <WC        position={[wcX, 0, wcZ]}  rotation={Math.PI} />
           <WashBasin position={[rx + 0.32, 0, basZ]} rotation={Math.PI / 2} />
+        </>
+      );
+    }
+
+    // ── Office / Workspace ───────────────────────────────────────────────────
+    case "office":
+    case "study": {
+      // Desk along north wall, chair in front of it
+      const deskZ  = rz + 0.42;
+      const chairZ = rz + 1.10;
+      return (
+        <>
+          <Desk     position={[cx, 0, deskZ]}  rotation={0} />
+          <DeskChair position={[cx, 0, chairZ]} rotation={Math.PI} />
         </>
       );
     }
