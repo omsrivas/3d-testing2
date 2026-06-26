@@ -1,5 +1,5 @@
 import {
-  useRef, useMemo, useState, useEffect, Suspense, lazy,
+  useRef, useMemo, useState, useEffect, Suspense, lazy, memo,
 } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Environment, ContactShadows, SoftShadows, Html } from "@react-three/drei";
@@ -450,7 +450,7 @@ const _quat  = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 
-function InstancedMeshGroup({
+const InstancedMeshGroup = memo(function InstancedMeshGroup({
   specs, role, textures, wireframe, targetOpacity,
 }: {
   specs: BoxSpec[];
@@ -460,12 +460,13 @@ function InstancedMeshGroup({
   targetOpacity: number;
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const { invalidate } = useThree();
 
   const mat = useMemo(() => makeMaterial(role, textures), [role, textures]);
 
   useEffect(() => () => { mat.dispose(); }, [mat]);
 
-  const isGlass   = (ROLE_MAT[role].transmission ?? 0) > 0;
+  const isGlass     = (ROLE_MAT[role].transmission ?? 0) > 0;
   const baseOpacity = ROLE_MAT[role].opacity ?? 1;
 
   // Bake instance matrices once per specs change
@@ -481,36 +482,54 @@ function InstancedMeshGroup({
     });
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [specs]);
+    invalidate();
+  }, [specs, invalidate]);
 
-  // Keep refs for useFrame to read the latest prop values without re-subscribing
   const targetOpRef  = useRef(targetOpacity);
   const wireframeRef = useRef(wireframe);
   targetOpRef.current  = targetOpacity;
   wireframeRef.current = wireframe;
 
-  const currOpRef = useRef(targetOpacity * baseOpacity);
+  const currOpRef    = useRef(targetOpacity * baseOpacity);
+  const needsAnimRef = useRef(false);
+
+  // Kick off animation when opacity or wireframe changes
+  useEffect(() => {
+    needsAnimRef.current = true;
+    invalidate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetOpacity, wireframe]);
 
   useFrame((_, dt) => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
     const want = targetOpRef.current * baseOpacity;
+    const diff = Math.abs(currOpRef.current - want);
+
+    // Skip when settled and no animation pending
+    if (!needsAnimRef.current && diff < 0.002) return;
+
     currOpRef.current = THREE.MathUtils.lerp(
       currOpRef.current, want, Math.min(1, dt * 5.5)
     );
+    if (diff < 0.002) {
+      currOpRef.current = want;
+      needsAnimRef.current = false;
+    }
     const op = currOpRef.current;
 
     const m = mesh.material as THREE.MeshStandardMaterial;
-    m.opacity       = op;
-    m.transparent   = op < 0.998 || isGlass;
-    m.depthWrite    = op > 0.95 && !isGlass;
-    // Wireframe only on opaque standard (non-glass) meshes
+    m.opacity     = op;
+    m.transparent = op < 0.998 || isGlass;
+    m.depthWrite  = op > 0.95 && !isGlass;
     if (!isGlass) {
       (m as THREE.MeshStandardMaterial).wireframe = wireframeRef.current && op > 0.95;
     }
     mesh.castShadow = !isGlass && op > 0.50;
     mesh.visible    = op > 0.004;
+
+    if (needsAnimRef.current) invalidate();
   });
 
   return (
@@ -522,7 +541,7 @@ function InstancedMeshGroup({
       frustumCulled
     />
   );
-}
+});
 
 // ─── View presets ─────────────────────────────────────────────────────────────
 export type ViewPreset =
@@ -598,11 +617,17 @@ function presetCamera(
   }
 }
 
+// ── Pre-allocated scratch vectors for walkthrough (avoids per-frame GC) ───────
+const _wFwd   = new THREE.Vector3();
+const _wRight = new THREE.Vector3();
+const _wUp    = new THREE.Vector3(0, 1, 0);
+const _wMove  = new THREE.Vector3();
+
 // ─── Camera controller ────────────────────────────────────────────────────────
 function CameraController({
   preset, scene, isoFloor,
 }: { preset: ViewPreset; scene: SceneData; isoFloor: number }) {
-  const { camera } = useThree();
+  const { camera, invalidate } = useThree();
   const controlsRef = useRef<any>(null);
   const animRef = useRef<{
     fromPos: THREE.Vector3; fromTarget: THREE.Vector3;
@@ -617,6 +642,7 @@ function CameraController({
       keysRef.current.add(e.code);
       if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code))
         e.preventDefault();
+      invalidate(); // Begin render loop while keys are held
     };
     const up = (e: KeyboardEvent) => keysRef.current.delete(e.code);
     window.addEventListener("keydown", dn);
@@ -626,7 +652,7 @@ function CameraController({
       window.removeEventListener("keyup", up);
       keysRef.current.clear();
     };
-  }, [preset]);
+  }, [preset, invalidate]);
 
   useEffect(() => {
     const { pos, target } = presetCamera(preset, scene, isoFloor);
@@ -635,6 +661,7 @@ function CameraController({
       fromTarget: controlsRef.current?.target.clone() ?? new THREE.Vector3(...scene.center),
       toPos: pos, toTarget: target, t: 0,
     };
+    invalidate(); // Kick off camera animation
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset, isoFloor]);
 
@@ -647,7 +674,8 @@ function CameraController({
       camera.position.lerpVectors(a.fromPos, a.toPos, e);
       ctrl?.target.lerpVectors(a.fromTarget, a.toTarget, e);
       ctrl?.update();
-      if (a.t >= 1) animRef.current = null;
+      if (a.t < 1) invalidate(); // Keep animating until done
+      else animRef.current = null;
     }
 
     if (preset === "walkthrough" && !a && ctrl) {
@@ -655,17 +683,18 @@ function CameraController({
       if (keys.size === 0) return;
       const speed = dt * 3.5;
       const eyeY  = isoFloor * FLOOR_TO_FLOOR + 1.7;
-      const fwd = new THREE.Vector3();
-      camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
-      const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
-      const move = new THREE.Vector3();
-      if (keys.has("KeyW") || keys.has("ArrowUp"))    move.addScaledVector(fwd,    speed);
-      if (keys.has("KeyS") || keys.has("ArrowDown"))  move.addScaledVector(fwd,   -speed);
-      if (keys.has("KeyA") || keys.has("ArrowLeft"))  move.addScaledVector(right, -speed);
-      if (keys.has("KeyD") || keys.has("ArrowRight")) move.addScaledVector(right,  speed);
-      camera.position.add(move); ctrl.target.add(move);
+      _wFwd.set(0, 0, 0);
+      camera.getWorldDirection(_wFwd); _wFwd.y = 0; _wFwd.normalize();
+      _wRight.crossVectors(_wFwd, _wUp).normalize();
+      _wMove.set(0, 0, 0);
+      if (keys.has("KeyW") || keys.has("ArrowUp"))    _wMove.addScaledVector(_wFwd,    speed);
+      if (keys.has("KeyS") || keys.has("ArrowDown"))  _wMove.addScaledVector(_wFwd,   -speed);
+      if (keys.has("KeyA") || keys.has("ArrowLeft"))  _wMove.addScaledVector(_wRight, -speed);
+      if (keys.has("KeyD") || keys.has("ArrowRight")) _wMove.addScaledVector(_wRight,  speed);
+      camera.position.add(_wMove); ctrl.target.add(_wMove);
       camera.position.y = eyeY; ctrl.target.y = eyeY;
       ctrl.update();
+      invalidate(); // Keep rendering while keys are pressed
     }
   });
 
@@ -812,14 +841,28 @@ function FloorGroups({
   presetRef.current    = preset;
   isoFloorRef.current  = isoFloor;
 
+  const { invalidate } = useThree();
+  const explodeSettled = useRef(true);
+
+  // Kick off explode animation when preset changes
+  useEffect(() => {
+    explodeSettled.current = false;
+    invalidate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset]);
+
   useFrame((_, dt) => {
+    if (explodeSettled.current) return;
+
     const wantExplode = presetRef.current === "exploded" ? EXPLODE_GAP : 0;
     const speed = currentExplode.current < wantExplode ? 4.5 : 5.5;
     currentExplode.current = THREE.MathUtils.lerp(
       currentExplode.current, wantExplode, Math.min(1, dt * speed),
     );
-    if (Math.abs(currentExplode.current - wantExplode) < 0.002)
+    if (Math.abs(currentExplode.current - wantExplode) < 0.002) {
       currentExplode.current = wantExplode;
+      explodeSettled.current = true;
+    }
     const ce = currentExplode.current;
 
     for (const [f, grp] of Object.entries(groupRefs.current)) {
@@ -837,6 +880,8 @@ function FloorGroups({
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.opacity = Math.min(1, gap / 0.5);
     });
+
+    if (!explodeSettled.current) invalidate();
   });
 
   const isExploded = preset === "exploded";
@@ -942,7 +987,7 @@ function FloorGroups({
 }
 
 // ─── Lighting ─────────────────────────────────────────────────────────────────
-function Lighting({ scene, shadowMapSize }: { scene: SceneData; shadowMapSize: number }) {
+const Lighting = memo(function Lighting({ scene, shadowMapSize }: { scene: SceneData; shadowMapSize: number }) {
   const d = scene.diagonal;
   const [cx, , cz] = scene.center;
   return (
@@ -974,10 +1019,10 @@ function Lighting({ scene, shadowMapSize }: { scene: SceneData; shadowMapSize: n
       <hemisphereLight args={["#A8C8F0", "#C8A870", 0.55]} />
     </>
   );
-}
+});
 
 // ─── Ground ───────────────────────────────────────────────────────────────────
-function Ground({ scene, textures }: { scene: SceneData; textures: Textures }) {
+const Ground = memo(function Ground({ scene, textures }: { scene: SceneData; textures: Textures }) {
   const { plotWidth: pw, plotDepth: pd } = scene;
   const extend = Math.max(pw, pd) * 2.5;
   return (
@@ -1011,7 +1056,7 @@ function Ground({ scene, textures }: { scene: SceneData; textures: Textures }) {
       </mesh>
     </group>
   );
-}
+});
 
 // ─── Full scene ───────────────────────────────────────────────────────────────
 function BuildingScene({
@@ -1025,7 +1070,7 @@ function BuildingScene({
   textures: Textures;
   isMobile: boolean;
 }) {
-  const shadowMapSize = isMobile ? 1024 : 4096;
+  const shadowMapSize = isMobile ? 1024 : 2048;
   const aoSamples     = isMobile ? 4 : 12;
   const aoRadius      = isMobile ? 0.9 : 1.6;
 
@@ -1217,6 +1262,8 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
       <div className="flex-1 w-full">
         <Canvas
           shadows={{ type: THREE.PCFSoftShadowMap }}
+          frameloop="demand"
+          performance={{ min: 0.5 }}
           dpr={dpr}
           gl={{
             antialias: !isMobile,
