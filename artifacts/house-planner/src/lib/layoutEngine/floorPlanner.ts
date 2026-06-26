@@ -244,9 +244,13 @@ export function planAllFloors(
     | { x: number; y: number; width: number; depth: number }
     | undefined;
 
+  // Canonical staircase spec (from ground floor) — used for room metadata
+  let canonicalStairSpec: RoomSpec | undefined;
+
   if (input.floors > 1 || input.hasStaircase) {
     const stairSpec = specs.find((s) => s.type === "staircase" && s.targetFloor === 0);
     if (stairSpec) {
+      canonicalStairSpec = stairSpec;
       const { w, d } = chooseDimensions(stairSpec, input.plotWidth, input.plotDepth);
 
       // Place staircase in Vastu-preferred zone before any other room
@@ -272,10 +276,39 @@ export function planAllFloors(
       (s) => s.targetFloor === floor || s.targetFloor === -1
     );
 
-    // Remove staircase from regular specs (we handle it separately below)
+    // Remove staircase specs from regular placement — we place them manually
+    // at the reserved footprint so the shaft aligns perfectly across all floors
     const nonStairSpecs = floorSpecs.filter((s) => s.type !== "staircase");
 
     const plan = planFloor(floor, nonStairSpecs, input, stairReservation);
+
+    // ── Manually place staircase room at the reserved footprint ───────────────
+    // This ensures every floor (G through top) has a staircase room in exactly
+    // the same position, which is required by generateStairs and wallGenerator.
+    if (stairReservation) {
+      const floorStairSpec =
+        specs.find((s) => s.type === "staircase" && s.targetFloor === floor) ??
+        canonicalStairSpec;
+
+      if (floorStairSpec) {
+        plan.rooms.push({
+          id: uid(`room-f${floor}`),
+          name: "Staircase",
+          type: "staircase",
+          floor,
+          x: stairReservation.x,
+          y: stairReservation.y,
+          width: stairReservation.width,
+          depth: stairReservation.depth,
+          area: parseFloat(
+            (stairReservation.width * stairReservation.depth).toFixed(2)
+          ),
+          vastuZone: floorStairSpec.preferredZones[0],
+          spec: floorStairSpec,
+        });
+      }
+    }
+
     floorPlans.push(plan);
   }
 

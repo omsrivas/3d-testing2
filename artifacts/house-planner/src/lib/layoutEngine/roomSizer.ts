@@ -67,11 +67,7 @@ function scaleDim(
 
 export function buildRoomSpecs(input: LayoutInput): RoomSpec[] {
   const specs: RoomSpec[] = [];
-  const { plotWidth, plotDepth, facing: _facing } = {
-    plotWidth: input.plotWidth,
-    plotDepth: input.plotDepth,
-    facing: input.facingDirection,
-  };
+  const { plotWidth, plotDepth } = input;
 
   const totalFloorArea = plotWidth * plotDepth;
 
@@ -106,24 +102,11 @@ export function buildRoomSpecs(input: LayoutInput): RoomSpec[] {
   }
 
   // ── Ground floor ────────────────────────────────────────────────────────────
-  // Foyer is always on ground floor, front side
-  specs.push(spec("foyer", 0, 0, 100));
-
-  // Parking on ground floor if requested
-  if (input.hasParking) {
-    specs.push(spec("parking", 0, 0, 95));
-  }
-
-  // Living on ground floor
-  specs.push(spec("living", 0, 0, 90));
-
-  // Dining on ground floor
-  specs.push(spec("dining", 0, 0, 85));
-
-  // Kitchen on ground floor
+  specs.push(spec("foyer",   0, 0, 100));
+  if (input.hasParking) specs.push(spec("parking", 0, 0, 95));
+  specs.push(spec("living",  0, 0, 90));
+  specs.push(spec("dining",  0, 0, 85));
   specs.push(spec("kitchen", 0, 0, 80));
-
-  // Utility on ground floor
   specs.push(spec("utility", 0, 0, 30));
 
   // Staircase on ground floor if multi-floor
@@ -131,49 +114,72 @@ export function buildRoomSpecs(input: LayoutInput): RoomSpec[] {
     specs.push(spec("staircase", 0, 0, 70));
   }
 
-  // ── Bedroom/bathroom distribution ───────────────────────────────────────────
+  // ── Bedroom distribution ──────────────────────────────────────────────────
   const bedsOnGround = input.floors === 1 ? input.bedrooms : Math.min(1, input.bedrooms);
-  const bedsOnUpper = input.bedrooms - bedsOnGround;
+  const bedsOnUpper  = input.bedrooms - bedsOnGround;
 
-  // Ground floor bedroom(s)
+  // Ground-floor bedrooms
   for (let i = 0; i < bedsOnGround; i++) {
     const type: RoomType = i === 0 && input.bedrooms === 1 ? "master_bedroom" : "bedroom";
     specs.push(spec(type, i + 1, 0, 60));
   }
 
-  // Upper floor rooms
-  for (let floor = 1; floor < input.floors; floor++) {
-    const bedsThisFloor = Math.ceil(bedsOnUpper / (input.floors - 1));
+  // ── Upper floors ────────────────────────────────────────────────────────────
+  // Each upper floor (1 … floors-1) gets:
+  //   • Its share of bedrooms (capped so total never exceeds bedsOnUpper)
+  //   • Its share of bathrooms (round-robin)
+  //   • A passage/landing for circulation
+  //   • A staircase room (placed at the reserved footprint by planAllFloors)
+  const upperFloorCount = Math.max(1, input.floors - 1);
 
-    // Master bedroom on first upper floor
-    if (floor === 1) {
+  // Bedroom quota per upper floor — computed progressively so we never exceed total
+  let bedsAssigned = 0;
+  for (let floor = 1; floor < input.floors; floor++) {
+    const floorsLeft   = input.floors - floor; // including this floor
+    const bedsLeft     = bedsOnUpper - bedsAssigned;
+    const quota        = bedsLeft > 0 ? Math.ceil(bedsLeft / floorsLeft) : 0;
+
+    if (floor === 1 && bedsLeft > 0) {
+      // Master bedroom always on first upper floor
       specs.push(spec("master_bedroom", 0, 1, 90));
-      const remaining = Math.max(0, bedsThisFloor - 1);
-      for (let i = 0; i < remaining; i++) {
+      bedsAssigned++;
+
+      // Additional bedrooms if the quota allows
+      const extra = Math.min(Math.max(0, quota - 1), bedsLeft - 1);
+      for (let i = 0; i < extra; i++) {
         specs.push(spec("bedroom", i + 2, 1, 75));
+        bedsAssigned++;
       }
-    } else {
-      for (let i = 0; i < bedsThisFloor; i++) {
+    } else if (bedsLeft > 0) {
+      const count = Math.min(quota, bedsLeft);
+      for (let i = 0; i < count; i++) {
         specs.push(spec("bedroom", i + 1, floor, 75));
+        bedsAssigned++;
       }
     }
 
-    // Staircase landing on each upper floor
+    // Passage on every upper floor (ensures circulation even with no bedrooms)
+    specs.push(spec("passage", floor, floor, 45));
+
+    // Staircase room on every upper floor
+    // planAllFloors will place these at the reserved footprint
     if (input.floors > 1 || input.hasStaircase) {
       specs.push(spec("staircase", floor, floor, 70));
     }
   }
 
-  // ── Bathroom distribution ────────────────────────────────────────────────────
+  // ── Bathroom distribution — round-robin across ALL upper floors ───────────
   const bathsOnGround = input.floors === 1 ? input.bathrooms : Math.min(1, input.bathrooms);
-  const bathsOnUpper = input.bathrooms - bathsOnGround;
+  const bathsOnUpper  = input.bathrooms - bathsOnGround;
 
+  // Ground-floor bathrooms
   for (let i = 0; i < bathsOnGround; i++) {
     specs.push(spec("bathroom", i, 0, 65));
   }
 
+  // Upper-floor bathrooms — distributed round-robin so every floor gets some
   for (let i = 0; i < bathsOnUpper; i++) {
-    const targetFloor = input.floors > 1 ? 1 + Math.floor(i / 2) : 1;
+    const targetFloor = 1 + (i % upperFloorCount);
     specs.push(spec("bathroom", bathsOnGround + i, targetFloor, 65));
   }
 
@@ -181,7 +187,10 @@ export function buildRoomSpecs(input: LayoutInput): RoomSpec[] {
   if (input.hasBalcony) {
     const balconyFloor = input.floors > 1 ? 1 : 0;
     specs.push(spec("balcony", 0, balconyFloor, 40));
-    if (input.floors > 1) {
+    if (input.floors > 2) {
+      // Extra balcony on second upper floor for 3+ floor buildings
+      specs.push(spec("balcony", 1, 2, 35));
+    } else if (input.floors > 1) {
       specs.push(spec("balcony", 1, 1, 35));
     }
   }
