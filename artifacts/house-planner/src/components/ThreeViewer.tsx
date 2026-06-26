@@ -930,10 +930,11 @@ function FloorGroups({
               if (room.type === "foyer" || room.type === "passage") return null;
               const rx = room.x + room.width  / 2;
               const rz = room.y + room.depth  / 2;
+              const labelY = PLINTH_H + f * FLOOR_TO_FLOOR + 0.52;
               return (
                 <Html
                   key={room.id}
-                  position={[rx, 0.52, rz]}
+                  position={[rx, labelY, rz]}
                   center
                   distanceFactor={18}
                   zIndexRange={[10, 20]}
@@ -960,7 +961,7 @@ function FloorGroups({
 
             {isExploded && (
               <Html
-                position={[scene.plotWidth + 1.4, FLOOR_TO_FLOOR * 0.5, scene.plotDepth / 2]}
+                position={[scene.plotWidth + 1.4, PLINTH_H + f * FLOOR_TO_FLOOR + FLOOR_TO_FLOOR * 0.5, scene.plotDepth / 2]}
                 center distanceFactor={18} zIndexRange={[10, 20]}
                 style={{ pointerEvents: "none" }}
               >
