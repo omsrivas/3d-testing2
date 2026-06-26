@@ -6,8 +6,10 @@ import { OrbitControls, Environment, ContactShadows, SoftShadows, Html } from "@
 import { EffectComposer, N8AO } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneData, BoxSpec, MeshRole } from "@/lib/geometryEngine3d";
-import { FLOOR_TO_FLOOR } from "@/lib/geometryEngine3d/constants";
+import { FLOOR_TO_FLOOR, PLINTH_H, PARAPET_H, PARAPET_CAP_T } from "@/lib/geometryEngine3d/constants";
 import { useIsMobile } from "@/hooks/use-mobile";
+import type { ArchStyle, StyleDef, StyleMatOverride } from "@/lib/houseStyle";
+import { ARCH_STYLES } from "@/lib/houseStyle";
 
 // ─── Lazy-loaded furniture (splits into separate JS chunk) ────────────────────
 const LazyFloorFurniture = lazy(() =>
@@ -366,12 +368,15 @@ const ROLE_SWATCH: Record<MeshRole, string> = Object.fromEntries(
 // ─── Material factory ─────────────────────────────────────────────────────────
 // Creates a fresh material per InstancedMeshGroup so opacity can be animated
 // independently per (role, floor) pair without affecting other groups.
-function makeMaterial(role: MeshRole, textures: Textures): THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial {
-  const spec = ROLE_MAT[role];
-  const isGlass = (spec.transmission ?? 0) > 0;
+// An optional styleOverride merges on top of the role defaults.
+function makeMaterial(role: MeshRole, textures: Textures, styleOverride?: StyleMatOverride): THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial {
+  const base = ROLE_MAT[role];
+  // Merge override fields on top of base defaults
+  const spec = styleOverride ? { ...base, ...styleOverride } : base;
+  const isGlass = (base.transmission ?? 0) > 0;
 
-  const map = (() => {
-    switch (spec.textureKey) {
+  const resolveTexKey = (key?: string) => {
+    switch (key) {
       case "concrete":     return textures.concrete;
       case "concreteDark": return textures.concreteDark;
       case "wood":         return textures.woodTex;
@@ -383,8 +388,9 @@ function makeMaterial(role: MeshRole, textures: Textures): THREE.MeshStandardMat
       case "tileSlab":     return textures.tileSlab;
       default:             return null;
     }
-  })();
+  };
 
+  const map       = resolveTexKey(spec.textureKey);
   const normalMap = (() => {
     switch (spec.normalKey) {
       case "concreteNorm": return textures.concreteNorm;
@@ -393,7 +399,6 @@ function makeMaterial(role: MeshRole, textures: Textures): THREE.MeshStandardMat
       default:             return null;
     }
   })();
-
   const roughnessMap = (() => {
     switch (spec.roughKey) {
       case "concreteRough": return textures.concreteRough;
@@ -408,9 +413,9 @@ function makeMaterial(role: MeshRole, textures: Textures): THREE.MeshStandardMat
       roughness: spec.roughness,
       metalness: spec.metalness,
       // @ts-ignore
-      transmission: spec.transmission,
-      ior: spec.ior ?? 1.5,
-      reflectivity: spec.reflectivity ?? 0.5,
+      transmission: base.transmission,
+      ior: base.ior ?? 1.5,
+      reflectivity: base.reflectivity ?? 0.5,
       opacity: spec.opacity ?? 1,
       transparent: true,
       depthWrite: false,
@@ -451,18 +456,19 @@ const _scale = new THREE.Vector3();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 
 const InstancedMeshGroup = memo(function InstancedMeshGroup({
-  specs, role, textures, wireframe, targetOpacity,
+  specs, role, textures, wireframe, targetOpacity, styleOverride,
 }: {
   specs: BoxSpec[];
   role: MeshRole;
   textures: Textures;
   wireframe: boolean;
   targetOpacity: number;
+  styleOverride?: StyleMatOverride;
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const { invalidate } = useThree();
 
-  const mat = useMemo(() => makeMaterial(role, textures), [role, textures]);
+  const mat = useMemo(() => makeMaterial(role, textures, styleOverride), [role, textures, styleOverride]);
 
   useEffect(() => () => { mat.dispose(); }, [mat]);
 
@@ -760,7 +766,7 @@ function getTargetOpacity(role: string, floor: number, preset: ViewPreset, isoFl
 // This reduces draw calls from O(meshCount) → O(roles × floors) ≈ 15–60.
 
 function InstancedFloor({
-  floorSpecs, floor, preset, isoFloor, wireframe, textures,
+  floorSpecs, floor, preset, isoFloor, wireframe, textures, matOverrides,
 }: {
   floorSpecs: BoxSpec[];
   floor: number;
@@ -768,6 +774,7 @@ function InstancedFloor({
   isoFloor: number;
   wireframe: boolean;
   textures: Textures;
+  matOverrides: Partial<Record<MeshRole, StyleMatOverride>>;
 }) {
   const byRole = useMemo<Map<MeshRole, BoxSpec[]>>(() => {
     const m = new Map<MeshRole, BoxSpec[]>();
@@ -788,6 +795,7 @@ function InstancedFloor({
           textures={textures}
           wireframe={wireframe}
           targetOpacity={getTargetOpacity(role, floor, preset, isoFloor)}
+          styleOverride={matOverrides[role]}
         />
       ))}
     </>
@@ -795,7 +803,7 @@ function InstancedFloor({
 }
 
 function FloorGroups({
-  scene, preset, isoFloor, wireframe, showFurniture, textures,
+  scene, preset, isoFloor, wireframe, showFurniture, textures, matOverrides,
 }: {
   scene: SceneData;
   preset: ViewPreset;
@@ -803,6 +811,7 @@ function FloorGroups({
   wireframe: boolean;
   showFurniture: boolean;
   textures: Textures;
+  matOverrides: Partial<Record<MeshRole, StyleMatOverride>>;
 }) {
   const byFloor = useMemo<Map<number, BoxSpec[]>>(() => {
     const m = new Map<number, BoxSpec[]>();
@@ -902,6 +911,7 @@ function FloorGroups({
               isoFloor={isoFloor}
               wireframe={wireframe}
               textures={textures}
+              matOverrides={matOverrides}
             />
 
             {/* Furniture (lazy-loaded chunk) */}
@@ -1021,6 +1031,102 @@ const Lighting = memo(function Lighting({ scene, shadowMapSize }: { scene: Scene
   );
 });
 
+// ─── Sloped Roof Overlay (Traditional Indian style) ───────────────────────────
+// A gabled / hipped roof geometry placed on top of the flat slab.
+// Uses two rotated box meshes for the front and rear slopes, plus
+// two triangular end gables built from scaled, rotated boxes.
+const SlopedRoofOverlay = memo(function SlopedRoofOverlay({
+  scene, tileColor, floors,
+}: {
+  scene: SceneData;
+  tileColor: string;
+  floors: number;
+}) {
+  const pw = scene.plotWidth;
+  const pd = scene.plotDepth;
+  // Top of parapet / roof surface
+  const baseY = PLINTH_H + floors * FLOOR_TO_FLOOR + PARAPET_H + PARAPET_CAP_T + 0.05;
+  const overhang = 0.55;
+  const rw = pw + overhang * 2;
+  const rd = pd + overhang * 2;
+  const ridgeH = Math.min(rw, rd) * 0.18;
+  const halfW  = rw / 2;
+  const halfD  = rd / 2;
+  const cx = pw / 2, cz = pd / 2;
+
+  // Gabled roof: ridge runs along depth (Z) axis
+  // Each slope: width = halfW, height = ridgeH, depth = rd
+  const slopeLen = Math.sqrt(halfW * halfW + ridgeH * ridgeH);
+  const angle = Math.atan2(ridgeH, halfW);
+
+  const tileMat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: tileColor, roughness: 0.88, metalness: 0.02 }),
+    [tileColor],
+  );
+  useEffect(() => () => { tileMat.dispose(); }, [tileMat]);
+
+  // End gable panels (triangular prism approximated via scale)
+  const gableH = ridgeH;
+  const gableD = 0.22;
+
+  return (
+    <group>
+      {/* Left slope (West) */}
+      <mesh
+        position={[cx - halfW / 2, baseY + ridgeH / 2, cz]}
+        rotation={[0, 0, angle]}
+        material={tileMat}
+        castShadow receiveShadow
+      >
+        <boxGeometry args={[slopeLen, 0.18, rd]} />
+      </mesh>
+
+      {/* Right slope (East) */}
+      <mesh
+        position={[cx + halfW / 2, baseY + ridgeH / 2, cz]}
+        rotation={[0, 0, -angle]}
+        material={tileMat}
+        castShadow receiveShadow
+      >
+        <boxGeometry args={[slopeLen, 0.18, rd]} />
+      </mesh>
+
+      {/* Ridge beam */}
+      <mesh position={[cx, baseY + ridgeH, cz]} material={tileMat} castShadow>
+        <boxGeometry args={[0.28, 0.20, rd + 0.20]} />
+      </mesh>
+
+      {/* Eave overhang strip (front) */}
+      <mesh position={[cx, baseY + 0.05, -overhang / 2]} material={tileMat} receiveShadow>
+        <boxGeometry args={[rw, 0.14, overhang]} />
+      </mesh>
+
+      {/* Eave overhang strip (rear) */}
+      <mesh position={[cx, baseY + 0.05, pd + overhang / 2]} material={tileMat} receiveShadow>
+        <boxGeometry args={[rw, 0.14, overhang]} />
+      </mesh>
+
+      {/* North gable triangle (scaled box approximation) */}
+      <mesh
+        position={[cx, baseY + gableH / 2, -overhang - gableD / 2]}
+        material={tileMat}
+        castShadow
+      >
+        <boxGeometry args={[rw, gableH, gableD]} />
+      </mesh>
+
+      {/* South gable triangle */}
+      <mesh
+        position={[cx, baseY + gableH / 2, pd + overhang + gableD / 2]}
+        material={tileMat}
+        castShadow
+      >
+        <boxGeometry args={[rw, gableH, gableD]} />
+      </mesh>
+    </group>
+  );
+});
+
 // ─── Ground ───────────────────────────────────────────────────────────────────
 const Ground = memo(function Ground({ scene, textures }: { scene: SceneData; textures: Textures }) {
   const { plotWidth: pw, plotDepth: pd } = scene;
@@ -1060,7 +1166,7 @@ const Ground = memo(function Ground({ scene, textures }: { scene: SceneData; tex
 
 // ─── Full scene ───────────────────────────────────────────────────────────────
 function BuildingScene({
-  scene, preset, isoFloor, wireframe, showFurniture, textures, isMobile,
+  scene, preset, isoFloor, wireframe, showFurniture, textures, isMobile, style,
 }: {
   scene: SceneData;
   preset: ViewPreset;
@@ -1069,6 +1175,7 @@ function BuildingScene({
   showFurniture: boolean;
   textures: Textures;
   isMobile: boolean;
+  style: StyleDef;
 }) {
   const shadowMapSize = isMobile ? 1024 : 2048;
   const aoSamples     = isMobile ? 4 : 12;
@@ -1078,8 +1185,11 @@ function BuildingScene({
     <>
       <CameraController preset={preset} scene={scene} isoFloor={isoFloor} />
       <Lighting scene={scene} shadowMapSize={shadowMapSize} />
-      {/* "apartment" gives crisp warm reflections on glass & metal */}
       <Environment preset="apartment" background={false} />
+
+      {/* Style-driven sky & fog */}
+      <color attach="background" args={[style.skyColor]} />
+      <fog attach="fog" args={[style.fogColor, scene.diagonal * 7, scene.diagonal * 16]} />
 
       <FloorGroups
         scene={scene}
@@ -1088,11 +1198,25 @@ function BuildingScene({
         wireframe={wireframe}
         showFurniture={showFurniture}
         textures={textures}
+        matOverrides={style.matOverrides}
       />
+
+      {/* Sloped roof overlay for Traditional Indian style */}
+      {style.roofType === "sloped" && (
+        <SlopedRoofOverlay
+          scene={scene}
+          tileColor={style.roofTileColor}
+          floors={scene.floors}
+        />
+      )}
 
       {showFurniture && (
         <Suspense fallback={null}>
-          <LazyPlotLandscape plotWidth={scene.plotWidth} plotDepth={scene.plotDepth} />
+          <LazyPlotLandscape
+            plotWidth={scene.plotWidth}
+            plotDepth={scene.plotDepth}
+            landscapeStyle={style.landscape}
+          />
         </Suspense>
       )}
 
@@ -1175,9 +1299,12 @@ const TBLabel = ({ children, color }: { children: React.ReactNode; color: string
 );
 
 // ─── Main exported component ──────────────────────────────────────────────────
-interface ThreeViewerProps { scene: SceneData }
+interface ThreeViewerProps {
+  scene: SceneData;
+  styleName?: ArchStyle;
+}
 
-export default function ThreeViewer({ scene }: ThreeViewerProps) {
+export default function ThreeViewer({ scene, styleName = "modern-minimal" }: ThreeViewerProps) {
   const [preset, setPreset]           = useState<ViewPreset>("iso");
   const [isoFloor, setIsoFloor]       = useState(0);
   const [wireframe, setWireframe]     = useState(false);
@@ -1187,6 +1314,9 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
 
   // Singleton texture cache — created once per browser session
   const textures = useMemo(() => getTextures(isMobile), [isMobile]);
+
+  // Resolved style definition — changes instantly on styleName change
+  const style = useMemo(() => ARCH_STYLES[styleName], [styleName]);
 
   const initPos = useMemo<[number, number, number]>(() => {
     const [cx, , cz] = scene.center;
@@ -1273,11 +1403,9 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
             toneMappingExposure: 1.15,
           }}
           camera={{ position: initPos, fov: 44, near: 0.1, far: 8000 }}
-          style={{ background: "#C0D4EE" }}
+          style={{ background: style.skyColor }}
           resize={{ debounce: 0, scroll: false }}
         >
-          <color attach="background" args={["#C0D4EE"]} />
-          <fog attach="fog" args={["#C8DCF4", scene.diagonal * 7, scene.diagonal * 16]} />
           <SoftShadows size={18} focus={0.6} samples={softShadowSamples} />
           <Suspense fallback={null}>
             <BuildingScene
@@ -1288,6 +1416,7 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
               showFurniture={showFurniture}
               textures={textures}
               isMobile={isMobile}
+              style={style}
             />
           </Suspense>
         </Canvas>
@@ -1330,13 +1459,15 @@ export default function ThreeViewer({ scene }: ThreeViewerProps) {
           backdropFilter: "blur(12px)",
         }}
       >
-        <div className="text-[8px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#7a9868" }}>Materials</div>
+        <div className="text-[8px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "#7a9868" }}>
+          {style.name}
+        </div>
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
           {LEGEND_ROLES.map(role => (
             <div key={role} className="flex items-center gap-1.5">
               <span
                 className="inline-block w-2.5 h-2.5 rounded-sm shrink-0"
-                style={{ background: ROLE_SWATCH[role], opacity: ROLE_MAT[role].opacity ?? 1, border: "0.5px solid rgba(255,255,255,0.12)" }}
+                style={{ background: style.matOverrides[role]?.color ?? ROLE_SWATCH[role], opacity: ROLE_MAT[role].opacity ?? 1, border: "0.5px solid rgba(255,255,255,0.12)" }}
               />
               <span className="text-[8px] capitalize" style={{ color: "#6a8060" }}>{role.replace(/-/g, " ")}</span>
             </div>

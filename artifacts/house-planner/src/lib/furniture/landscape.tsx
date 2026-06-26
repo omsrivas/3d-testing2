@@ -9,6 +9,7 @@
 import { useRef, useMemo, memo } from "react";
 import { useThree, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import type { LandscapeStyle } from "@/lib/houseStyle";
 
 type V3 = [number, number, number];
 
@@ -252,37 +253,63 @@ export const LargePlant = memo(function LargePlant({ position, rotation = 0 }: {
 // ─── Wall panel with coping strip ─────────────────────────────────────────────
 const WallPanel = memo(function WallPanel({
   cx, cz, length, axis, height = 1.50, thick = 0.22,
-}: { cx: number; cz: number; length: number; axis: "x" | "z"; height?: number; thick?: number }) {
+  wallColor, copingColor,
+}: {
+  cx: number; cz: number; length: number; axis: "x" | "z";
+  height?: number; thick?: number;
+  wallColor?: string; copingColor?: string;
+}) {
   const [bw, bd] = axis === "x" ? [length, thick] : [thick, length];
   const cw = bw + 0.06, cd = bd + 0.06;
-  const wallGeo  = useMemo(() => new THREE.BoxGeometry(bw, height, bd), [bw, height, bd]);
+  const wallGeo   = useMemo(() => new THREE.BoxGeometry(bw, height, bd), [bw, height, bd]);
   const copingGeo = useMemo(() => new THREE.BoxGeometry(cw, 0.096, cd), [cw, cd]);
   return (
     <group>
-      <mesh geometry={wallGeo}   material={M.wallPlaster} position={[cx, height / 2, cz]} castShadow receiveShadow />
-      <mesh geometry={copingGeo} material={M.wallCoping}  position={[cx, height + 0.048, cz]} />
+      <mesh geometry={wallGeo}   position={[cx, height / 2, cz]} castShadow receiveShadow>
+        {wallColor
+          ? <meshStandardMaterial color={wallColor}   roughness={0.88} metalness={0} />
+          : <primitive object={M.wallPlaster} attach="material" />}
+      </mesh>
+      <mesh geometry={copingGeo} position={[cx, height + 0.048, cz]}>
+        {copingColor
+          ? <meshStandardMaterial color={copingColor} roughness={0.80} metalness={0} />
+          : <primitive object={M.wallCoping} attach="material" />}
+      </mesh>
     </group>
   );
 });
 
 // ─── Gate pillar ──────────────────────────────────────────────────────────────
-const GatePillar = memo(function GatePillar({ cx, cz }: { cx: number; cz: number }) {
+const GatePillar = memo(function GatePillar({
+  cx, cz, pillarColor, pillarCapColor,
+}: { cx: number; cz: number; pillarColor?: string; pillarCapColor?: string }) {
   const pw = 0.42, ph = 2.10;
   const bodyGeo = useMemo(() => new THREE.BoxGeometry(pw, ph, pw), []);
   const capGeo  = useMemo(() => new THREE.BoxGeometry(pw + 0.12, 0.104, pw + 0.12), []);
   return (
     <group>
-      <mesh geometry={bodyGeo}         material={M.pillarFace}   position={[cx, ph / 2, cz]} castShadow receiveShadow />
-      <mesh geometry={capGeo}          material={M.pillarCap}    position={[cx, ph + 0.052, cz]} />
-      <mesh geometry={G.pillarFinial}  material={M.pillarFinial} position={[cx, ph + 0.104 + 0.14, cz]} />
+      <mesh geometry={bodyGeo} position={[cx, ph / 2, cz]} castShadow receiveShadow>
+        {pillarColor
+          ? <meshStandardMaterial color={pillarColor} roughness={0.84} metalness={0} />
+          : <primitive object={M.pillarFace} attach="material" />}
+      </mesh>
+      <mesh geometry={capGeo} position={[cx, ph + 0.052, cz]}>
+        {pillarCapColor
+          ? <meshStandardMaterial color={pillarCapColor} roughness={0.78} metalness={0} />
+          : <primitive object={M.pillarCap} attach="material" />}
+      </mesh>
+      <mesh geometry={G.pillarFinial} material={M.pillarFinial} position={[cx, ph + 0.104 + 0.14, cz]} />
     </group>
   );
 });
 
 // ─── Gate leaf ────────────────────────────────────────────────────────────────
 const GateLeaf = memo(function GateLeaf({
-  hingeX, cz, leafWidth, openDir,
-}: { hingeX: number; cz: number; leafWidth: number; openDir: 1 | -1 }) {
+  hingeX, cz, leafWidth, openDir, gateColor, gateMetal,
+}: {
+  hingeX: number; cz: number; leafWidth: number; openDir: 1 | -1;
+  gateColor?: string; gateMetal?: number;
+}) {
   const h = 1.52, nBars = 6, panelW = leafWidth - 0.08, openAngle = openDir * 1.92;
   const topRailGeo  = useMemo(() => new THREE.BoxGeometry(panelW, 0.075, 0.048), [panelW]);
   const midRailGeo  = useMemo(() => new THREE.BoxGeometry(panelW, 0.056, 0.044), [panelW]);
@@ -292,18 +319,30 @@ const GateLeaf = memo(function GateLeaf({
     () => Array.from({ length: nBars }, (_, i) => -panelW / 2 + (panelW / (nBars - 1)) * i),
     [panelW, nBars],
   );
+
+  const styleMat = useMemo(
+    () => gateColor
+      ? new THREE.MeshStandardMaterial({ color: gateColor, roughness: 0.50, metalness: gateMetal ?? 0.75 })
+      : null,
+    [gateColor, gateMetal],
+  );
+
+  const railMat = styleMat ?? M.gateIron;
+  const barMat  = styleMat ?? M.gateBar;
+  const hingeMat = styleMat ?? M.gateHinge;
+
   return (
     <group position={[hingeX, 0, cz]} rotation={[0, openAngle, 0]}>
       <group position={[openDir * leafWidth / 2, 0, 0]}>
-        <mesh geometry={topRailGeo}  material={M.gateIron}  position={[0, h - 0.07, 0]}  castShadow />
-        <mesh geometry={midRailGeo}  material={M.gateIron2} position={[0, h * 0.58, 0]}  castShadow />
-        <mesh geometry={topRailGeo}  material={M.gateIron}  position={[0, 0.12, 0]}       castShadow />
+        <mesh geometry={topRailGeo}  material={railMat} position={[0, h - 0.07, 0]}  castShadow />
+        <mesh geometry={midRailGeo}  material={railMat} position={[0, h * 0.58, 0]}  castShadow />
+        <mesh geometry={topRailGeo}  material={railMat} position={[0, 0.12, 0]}       castShadow />
         {barXs.map((bx, i) => (
-          <mesh key={i} geometry={barGeo} material={M.gateBar} position={[bx, h / 2, 0]} castShadow />
+          <mesh key={i} geometry={barGeo} material={barMat} position={[bx, h / 2, 0]} castShadow />
         ))}
         <mesh
           geometry={hingeOrnGeo}
-          material={M.gateHinge}
+          material={hingeMat}
           position={[openDir * -(panelW / 2 - 0.06), h - 0.18, -0.032]}
           castShadow
         />
@@ -442,8 +481,9 @@ const DrivewaySurface = memo(function DrivewaySurface({
 // ── PlotLandscape — full-plot composition with batched LOD ────────────────────
 // ════════════════════════════════════════════════════════════════════════════════
 export const PlotLandscape = memo(function PlotLandscape({
-  plotWidth: pw, plotDepth: pd,
-}: { plotWidth: number; plotDepth: number }) {
+  plotWidth: pw, plotDepth: pd, landscapeStyle,
+}: { plotWidth: number; plotDepth: number; landscapeStyle?: LandscapeStyle }) {
+  const ls = landscapeStyle;
   const WALL_H   = 1.50, WALL_T = 0.22, PILLAR_W = 0.44;
   const GATE_HALF = 1.65, gc = pw / 2;
   const leftPX  = gc - GATE_HALF, rightPX = gc + GATE_HALF;
@@ -529,54 +569,100 @@ export const PlotLandscape = memo(function PlotLandscape({
     if (changed) invalidate();
   });
 
+  const showLamps   = ls?.showLamps   ?? true;
+  const showFlowers = ls?.showFlowers ?? true;
+  const showPlanters = ls?.showPlanters ?? true;
+  const vegDensity  = ls?.vegDensity  ?? 1.0;
+
+  // Filter trees/shrubs based on density
+  const activeShrubs = useMemo(
+    () => vegDensity >= 1.0 ? shrubs : shrubs.filter((_, i) => i % Math.ceil(1 / vegDensity) === 0),
+    [shrubs, vegDensity],
+  );
+  const activeTrees = useMemo(
+    () => vegDensity >= 0.8 ? trees : trees.slice(0, Math.max(2, Math.ceil(trees.length * vegDensity))),
+    [trees, vegDensity],
+  );
+  const activeSmallTrees = useMemo(
+    () => vegDensity >= 0.8 ? smallTrees : smallTrees.slice(0, Math.max(1, Math.ceil(smallTrees.length * vegDensity))),
+    [smallTrees, vegDensity],
+  );
+
   return (
     <>
       {/* ── Boundary walls ── */}
-      {leftWallLen > 0.4  && <WallPanel cx={leftWallCX}  cz={WALL_T / 2} length={leftWallLen}  axis="x" height={WALL_H} />}
-      {rightWallLen > 0.4 && <WallPanel cx={rightWallCX} cz={WALL_T / 2} length={rightWallLen} axis="x" height={WALL_H} />}
-      <WallPanel cx={WALL_T / 2}      cz={pd / 2}       length={pd} axis="z" height={WALL_H} />
-      <WallPanel cx={pw - WALL_T / 2} cz={pd / 2}       length={pd} axis="z" height={WALL_H} />
-      <WallPanel cx={pw / 2}          cz={pd - WALL_T / 2} length={pw} axis="x" height={WALL_H} />
+      {leftWallLen > 0.4  && (
+        <WallPanel cx={leftWallCX}  cz={WALL_T / 2} length={leftWallLen}  axis="x" height={WALL_H}
+          wallColor={ls?.wallColor} copingColor={ls?.wallCopingColor} />
+      )}
+      {rightWallLen > 0.4 && (
+        <WallPanel cx={rightWallCX} cz={WALL_T / 2} length={rightWallLen} axis="x" height={WALL_H}
+          wallColor={ls?.wallColor} copingColor={ls?.wallCopingColor} />
+      )}
+      <WallPanel cx={WALL_T / 2}      cz={pd / 2}          length={pd} axis="z" height={WALL_H}
+        wallColor={ls?.wallColor} copingColor={ls?.wallCopingColor} />
+      <WallPanel cx={pw - WALL_T / 2} cz={pd / 2}          length={pd} axis="z" height={WALL_H}
+        wallColor={ls?.wallColor} copingColor={ls?.wallCopingColor} />
+      <WallPanel cx={pw / 2}          cz={pd - WALL_T / 2} length={pw} axis="x" height={WALL_H}
+        wallColor={ls?.wallColor} copingColor={ls?.wallCopingColor} />
 
       {/* ── Gate ── */}
-      <GatePillar cx={leftPX}  cz={WALL_T / 2} />
-      <GatePillar cx={rightPX} cz={WALL_T / 2} />
-      <GateLeaf hingeX={leftPX  + PILLAR_W / 2} cz={WALL_T / 2} leafWidth={GATE_HALF - PILLAR_W / 2 - 0.06} openDir={-1} />
-      <GateLeaf hingeX={rightPX - PILLAR_W / 2} cz={WALL_T / 2} leafWidth={GATE_HALF - PILLAR_W / 2 - 0.06} openDir={1} />
+      <GatePillar cx={leftPX}  cz={WALL_T / 2}
+        pillarColor={ls?.pillarColor} pillarCapColor={ls?.pillarCapColor} />
+      <GatePillar cx={rightPX} cz={WALL_T / 2}
+        pillarColor={ls?.pillarColor} pillarCapColor={ls?.pillarCapColor} />
+      <GateLeaf hingeX={leftPX  + PILLAR_W / 2} cz={WALL_T / 2}
+        leafWidth={GATE_HALF - PILLAR_W / 2 - 0.06} openDir={-1}
+        gateColor={ls?.gateColor} gateMetal={ls?.gateMetal} />
+      <GateLeaf hingeX={rightPX - PILLAR_W / 2} cz={WALL_T / 2}
+        leafWidth={GATE_HALF - PILLAR_W / 2 - 0.06} openDir={1}
+        gateColor={ls?.gateColor} gateMetal={ls?.gateMetal} />
 
       {/* ── Driveway + walkway ── */}
       {driveW > 0.5 && <DrivewaySurface cx={driveCX} cz={driveCZ} width={driveW} depth={driveD} />}
       <WalkwayPath cx={walkCX} startZ={walkZ0} endZ={walkZ1} width={walkW} />
 
-      {/* ── Lamp posts ── */}
-      <LampPost position={[walkCX - walkW * 0.80, 0, lmpZ1]} />
-      <LampPost position={[walkCX + walkW * 0.80, 0, lmpZ1]} rotation={Math.PI} />
-      {walkZ1 - lmpZ1 > 2.5 && (
+      {/* ── Lamp posts (style-conditional) ── */}
+      {showLamps && (
         <>
-          <LampPost position={[walkCX - walkW * 0.80, 0, lmpZ2]} />
-          <LampPost position={[walkCX + walkW * 0.80, 0, lmpZ2]} rotation={Math.PI} />
+          <LampPost position={[walkCX - walkW * 0.80, 0, lmpZ1]} />
+          <LampPost position={[walkCX + walkW * 0.80, 0, lmpZ1]} rotation={Math.PI} />
+          {walkZ1 - lmpZ1 > 2.5 && (
+            <>
+              <LampPost position={[walkCX - walkW * 0.80, 0, lmpZ2]} />
+              <LampPost position={[walkCX + walkW * 0.80, 0, lmpZ2]} rotation={Math.PI} />
+            </>
+          )}
         </>
       )}
 
-      {/* ── Flower beds ── */}
-      {fbW > 0.4 && (
+      {/* ── Flower beds (style-conditional) ── */}
+      {showFlowers && fbW > 0.4 && (
         <>
           <FlowerBed position={[fbCX_L, 0, fbZ]} width={fbW} depth={0.68} />
           <FlowerBed position={[fbCX_R, 0, fbZ]} width={fbW} depth={0.68} />
         </>
       )}
-      <FlowerBed position={[walkCX - walkW * 0.85 - 0.50, 0, rbZ]} width={1.0} depth={0.55} />
-      <FlowerBed position={[walkCX + walkW * 0.85 + 0.50, 0, rbZ]} width={1.0} depth={0.55} />
+      {showFlowers && (
+        <>
+          <FlowerBed position={[walkCX - walkW * 0.85 - 0.50, 0, rbZ]} width={1.0} depth={0.55} />
+          <FlowerBed position={[walkCX + walkW * 0.85 + 0.50, 0, rbZ]} width={1.0} depth={0.55} />
+        </>
+      )}
 
-      {/* ── Planter boxes ── */}
-      <PlanterBox position={[walkCX - 1.10, 0, planterZ]} />
-      <PlanterBox position={[walkCX + 1.10, 0, planterZ]} />
+      {/* ── Planter boxes (style-conditional) ── */}
+      {showPlanters && (
+        <>
+          <PlanterBox position={[walkCX - 1.10, 0, planterZ]} />
+          <PlanterBox position={[walkCX + 1.10, 0, planterZ]} />
+        </>
+      )}
 
-      {/* ── Shrubs ── */}
-      {shrubs.map((s, i) => <Shrub key={i} position={s.pos} scale={s.scale} rotation={s.rot} />)}
+      {/* ── Shrubs (density-controlled) ── */}
+      {activeShrubs.map((s, i) => <Shrub key={i} position={s.pos} scale={s.scale} rotation={s.rot} />)}
 
       {/* ── Trees (LOD managed by single useFrame above) ── */}
-      {trees.map((t, i) => (
+      {activeTrees.map((t, i) => (
         <Tree
           key={i}
           position={t.pos}
@@ -587,8 +673,8 @@ export const PlotLandscape = memo(function PlotLandscape({
         />
       ))}
 
-      {/* ── Small trees ── */}
-      {smallTrees.map((t, i) => (
+      {/* ── Small trees (density-controlled) ── */}
+      {activeSmallTrees.map((t, i) => (
         <SmallTree
           key={i}
           position={t.pos}

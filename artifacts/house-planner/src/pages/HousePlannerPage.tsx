@@ -3,6 +3,8 @@ import { generateLayout } from "@/lib/layoutEngine";
 import type { LayoutInput, LayoutOutput } from "@/lib/layoutEngine";
 import { build3dScene } from "@/lib/geometryEngine3d";
 import FloorPlanCanvas from "@/components/FloorPlanCanvas";
+import { StyleSelector } from "@/components/StyleSelector";
+import { useStyleStore } from "@/store/styleStore";
 
 // ─── Lucide icons (tree-shakeable) ───────────────────────────────────────────
 import {
@@ -347,6 +349,11 @@ function ConfigPanel({
         </div>
       </div>
 
+      {/* ── House Style selector ── */}
+      <Divider />
+      <SectionHead icon={Building2} label="Architectural Style" />
+      <StyleSelector />
+
       {/* Generate button */}
       <div className="p-4 shrink-0" style={{ borderTop: `1px solid ${T.border}` }}>
         <button
@@ -406,6 +413,7 @@ export default function HousePlannerPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [panelOpen, setPanelOpen] = useState(true);
   const [mobilePanel, setMobilePanel] = useState(false);
+  const { selectedStyle } = useStyleStore();
 
   const generate = useCallback(() => {
     const out = generateLayout(input);
@@ -685,7 +693,7 @@ export default function HousePlannerPage() {
                     Loading 3D engine…
                   </div>
                 }>
-                  <ThreeViewer scene={scene3d} />
+                  <ThreeViewer scene={scene3d} styleName={selectedStyle} />
                 </Suspense>
               </div>
             )}
