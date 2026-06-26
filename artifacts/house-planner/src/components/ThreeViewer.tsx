@@ -803,7 +803,7 @@ function InstancedFloor({
 }
 
 function FloorGroups({
-  scene, preset, isoFloor, wireframe, showFurniture, textures, matOverrides,
+  scene, preset, isoFloor, wireframe, showFurniture, textures, matOverrides, slopedRoofRef,
 }: {
   scene: SceneData;
   preset: ViewPreset;
@@ -812,6 +812,7 @@ function FloorGroups({
   showFurniture: boolean;
   textures: Textures;
   matOverrides: Partial<Record<MeshRole, StyleMatOverride>>;
+  slopedRoofRef?: React.RefObject<THREE.Group | null>;
 }) {
   const byFloor = useMemo<Map<number, BoxSpec[]>>(() => {
     const m = new Map<number, BoxSpec[]>();
@@ -876,6 +877,9 @@ function FloorGroups({
 
     for (const [f, grp] of Object.entries(groupRefs.current)) {
       if (grp) grp.position.y = Number(f) * ce;
+    }
+    if (slopedRoofRef?.current) {
+      slopedRoofRef.current.position.y = scene.floors * ce;
     }
 
     const gap = Math.max(0, ce - FLOOR_TO_FLOOR);
@@ -1180,6 +1184,7 @@ function BuildingScene({
   const shadowMapSize = isMobile ? 1024 : 2048;
   const aoSamples     = isMobile ? 4 : 12;
   const aoRadius      = isMobile ? 0.9 : 1.6;
+  const slopedRoofRef = useRef<THREE.Group>(null);
 
   return (
     <>
@@ -1197,18 +1202,21 @@ function BuildingScene({
         preset={preset}
         isoFloor={isoFloor}
         wireframe={wireframe}
+        slopedRoofRef={slopedRoofRef}
         showFurniture={showFurniture}
         textures={textures}
         matOverrides={style.matOverrides}
       />
 
-      {/* Sloped roof overlay for Traditional Indian style */}
+      {/* Sloped roof overlay for Traditional Indian style — wrapped in animated group */}
       {style.roofType === "sloped" && (
-        <SlopedRoofOverlay
-          scene={scene}
-          tileColor={style.roofTileColor}
-          floors={scene.floors}
-        />
+        <group ref={slopedRoofRef}>
+          <SlopedRoofOverlay
+            scene={scene}
+            tileColor={style.roofTileColor}
+            floors={scene.floors}
+          />
+        </group>
       )}
 
       {showFurniture && (

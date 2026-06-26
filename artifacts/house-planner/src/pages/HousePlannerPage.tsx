@@ -212,7 +212,7 @@ function FloorPills({
 }: { value: number; onChange: (v: number) => void }) {
   return (
     <div className="flex gap-1">
-      {[1, 2, 3, 4, 5].map(n => {
+      {[1, 2, 3].map(n => {
         const active = value === n;
         return (
           <button
@@ -601,6 +601,22 @@ export default function HousePlannerPage() {
                   ))}
                 </>
               )}
+
+              {/* Separator + Reconfigure button */}
+              <div style={{ width: 1, height: 20, background: T.border, margin: "0 4px" }} />
+              <button
+                onClick={() => { setHasGenerated(false); setResult(null); setErrors([]); }}
+                className="flex items-center gap-1.5 transition-all"
+                style={{
+                  height: 30, paddingInline: 12, borderRadius: 10,
+                  background: "transparent",
+                  border: `1px solid ${T.border}`,
+                  color: T.textSec, fontSize: 11, fontWeight: 600,
+                }}
+              >
+                <RefreshCw size={11} />
+                Reconfigure
+              </button>
             </div>
           )}
 
