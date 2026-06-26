@@ -2,7 +2,7 @@ import {
   useRef, useMemo, useState, useEffect, Suspense, lazy, memo,
 } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, ContactShadows, SoftShadows, Html } from "@react-three/drei";
+import { OrbitControls, ContactShadows, SoftShadows, Html } from "@react-three/drei";
 import { EffectComposer, N8AO } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { SceneData, BoxSpec, MeshRole } from "@/lib/geometryEngine3d";
@@ -1185,7 +1185,8 @@ function BuildingScene({
     <>
       <CameraController preset={preset} scene={scene} isoFloor={isoFloor} />
       <Lighting scene={scene} shadowMapSize={shadowMapSize} />
-      <Environment preset="apartment" background={false} />
+      {/* Hemisphere light replaces CDN-fetched HDR environment — sky/ground IBL approximation */}
+      <hemisphereLight args={["#C8D8E8", "#8A7A6A", 0.55]} />
 
       {/* Style-driven sky & fog */}
       <color attach="background" args={[style.skyColor]} />
