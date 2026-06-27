@@ -561,17 +561,18 @@ function BathroomFurniture({ room, ox, oy }: { room: Room; ox:number; oy:number 
 function ParkingFurniture({ room, ox, oy }: { room: Room; ox:number; oy:number }) {
   const rx = ox + m(room.x), ry = oy + m(room.y);
   const rw = m(room.width),  rh = m(room.depth);
-  if (rw < m(1.8) && rh < m(1.8)) return null;
+  if (rw < m(1.6) && rh < m(1.6)) return null;
 
   // Orient car along the longer room axis
   const landscape = rw >= rh;
-  // carL = longer axis (car length ~4.5m), carW = shorter axis (car width ~2.0m)
+  // Compact sedan: ~3.8m long × 1.7m wide — leave margin of ~0.5m around
+  const margin = m(0.45);
   const carL = landscape
-    ? cl(m(4.2), m(2.5), rw - m(0.25))
-    : cl(m(4.2), m(2.5), rh - m(0.25));
+    ? cl(m(3.8), m(2.2), rw - margin * 2)
+    : cl(m(3.8), m(2.2), rh - margin * 2);
   const carW = landscape
-    ? cl(m(1.85), m(1.2), rh - m(0.2))
-    : cl(m(1.85), m(1.2), rw - m(0.2));
+    ? cl(m(1.7), m(1.1), rh - margin)
+    : cl(m(1.7), m(1.1), rw - margin);
 
   const carX = rx + (rw - (landscape ? carL : carW)) / 2;
   const carY = ry + (rh - (landscape ? carW : carL)) / 2;
@@ -719,9 +720,9 @@ function EntranceGateElements({ room, ox, oy }: { room: Room; ox:number; oy:numb
   const gateW = cl(m(3.0), m(2.5), rw * 0.60);
   const gateX = rx + (rw - gateW) / 2;
 
-  // Gate bars
-  const nBars = Math.max(3, Math.round(gateW / m(0.25)));
-  const barW  = 1.5;
+  // Gate bars — thicker for visibility
+  const nBars = Math.max(4, Math.round(gateW / m(0.22)));
+  const barW  = 2.5;
 
   // Paving in gate area
   const pathH = rh;

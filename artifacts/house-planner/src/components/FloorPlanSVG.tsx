@@ -11,8 +11,8 @@ const MARGIN    = 116;          // space around plot for dimension lines
 const TITLE_H   = 88;           // title block height
 const DIM_GAP   = 48;           // offset of dimension line from plot edge
 const TICK      = 9;            // 45° tick arm length
-const EXT_T     = 22;           // exterior wall min thickness (px)
-const INT_T     = 13;           // interior wall min thickness (px)
+const EXT_T     = 14;           // exterior wall min thickness (px)
+const INT_T     = 9;            // interior wall min thickness (px)
 
 // ─── Unit helpers ─────────────────────────────────────────────────────────────
 const S          = BASE_SCALE;
@@ -648,11 +648,9 @@ const FloorPlanSVG = forwardRef<SVGSVGElement, FloorPlanSVGProps>(
           <RoomFurniture key={`furn-${r.id}`} room={r} ox={OX} oy={OY} />
         ))}
 
-        {/* ⑦ Exterior boundary wall — double-line architectural style */}
+        {/* ⑦ Exterior boundary — clean single outer line */}
         <rect x={OX} y={OY} width={pw} height={pd}
-          fill="none" stroke={C.border} strokeWidth="5" />
-        <rect x={OX + 3} y={OY + 3} width={pw - 6} height={pd - 6}
-          fill="none" stroke={C.border} strokeWidth="1.2" opacity="0.35" />
+          fill="none" stroke={C.border} strokeWidth="2" />
 
         {/* ⑧ Walls (solid filled rectangles) */}
         {walls.map(w => (
