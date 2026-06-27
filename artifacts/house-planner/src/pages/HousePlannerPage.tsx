@@ -426,17 +426,15 @@ export default function HousePlannerPage() {
   }, []);
 
   useLayoutEffect(() => {
-    if (layout) {
-      const t = setTimeout(fitToScreen, 80);
-      return () => clearTimeout(t);
-    }
+    if (!layout) return;
+    const t = setTimeout(fitToScreen, 80);
+    return () => clearTimeout(t);
   }, [layout, fitToScreen]);
 
   useEffect(() => {
-    if (layout) {
-      const t = setTimeout(fitToScreen, 80);
-      return () => clearTimeout(t);
-    }
+    if (!layout) return;
+    const t = setTimeout(fitToScreen, 80);
+    return () => clearTimeout(t);
   }, [sidebarOpen, fitToScreen, layout]);
 
   const generate = useCallback(() => {

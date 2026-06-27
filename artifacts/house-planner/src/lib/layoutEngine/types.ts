@@ -4,6 +4,7 @@ export type FacingDirection = "N" | "S" | "E" | "W";
 
 export type RoomType =
   | "living"
+  | "family_lounge"
   | "dining"
   | "kitchen"
   | "master_bedroom"
@@ -17,6 +18,8 @@ export type RoomType =
   | "pooja"
   | "utility"
   | "passage"
+  | "front_garden"
+  | "entrance_gate"
   | "terrace";
 
 export type VastuZone =

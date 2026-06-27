@@ -51,6 +51,7 @@ const C = {
 // Professional near-white room fills
 const ROOM_FILLS: Record<string, string> = {
   living:         "#FAFAF7",
+  family_lounge:  "#F7FAF7",
   dining:         "#F8FCF8",
   kitchen:        "#FFFDF0",
   master_bedroom: "#F8F5FC",
@@ -58,30 +59,35 @@ const ROOM_FILLS: Record<string, string> = {
   bathroom:       "#EDF6FD",
   toilet:         "#EDF6FD",
   balcony:        "#F0F8F0",
-  parking:        "#F3F3F0",
+  parking:        "#F0F2EE",
   staircase:      "#F5F3EE",
   foyer:          "#FDFCF7",
   pooja:          "#FDF7EE",
   utility:        "#F6F6F3",
   passage:        "#FAFAFA",
+  front_garden:   "#EDF5E8",
+  entrance_gate:  "#E8EDE6",
   terrace:        "#F2F5F0",
 };
 
 const ROOM_LABELS: Record<string, string> = {
   living:         "LIVING ROOM",
+  family_lounge:  "FAMILY LOUNGE",
   dining:         "DINING ROOM",
   kitchen:        "KITCHEN",
   master_bedroom: "MASTER BEDROOM",
   bedroom:        "BEDROOM",
   bathroom:       "BATHROOM",
-  toilet:         "W.C.",
+  toilet:         "COMMON W.C.",
   balcony:        "BALCONY",
-  parking:        "PARKING",
+  parking:        "CAR PORCH",
   staircase:      "STAIRCASE",
   foyer:          "FOYER",
   pooja:          "POOJA ROOM",
   utility:        "UTILITY",
   passage:        "PASSAGE",
+  front_garden:   "FRONT GARDEN",
+  entrance_gate:  "ENTRANCE GATE",
   terrace:        "TERRACE",
 };
 
@@ -571,7 +577,7 @@ const FloorPlanSVG = forwardRef<SVGSVGElement, FloorPlanSVGProps>(
     }, [walls]);
 
     const numFloors    = Math.max(...layout.rooms.map(r => r.floor)) + 1;
-    const openRooms    = rooms.filter(r => r.type === "balcony" || r.type === "terrace");
+    const openRooms    = rooms.filter(r => r.type === "balcony" || r.type === "terrace" || r.type === "front_garden" || r.type === "entrance_gate");
 
     return (
       <svg

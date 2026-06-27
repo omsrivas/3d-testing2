@@ -17,7 +17,7 @@ function overlaps(a: Room, b: Room): boolean {
 // ─── Circulation check ────────────────────────────────────────────────────────
 // Every floor must have at least one path-forming room (foyer, passage, living, staircase).
 
-const CIRCULATION_TYPES = new Set<RoomType>(["foyer", "living", "passage", "staircase"]);
+const CIRCULATION_TYPES = new Set<RoomType>(["foyer", "living", "family_lounge", "passage", "staircase"]);
 
 function hasCirculation(rooms: Room[], floor: number): boolean {
   return rooms.some((r) => r.floor === floor && CIRCULATION_TYPES.has(r.type));
