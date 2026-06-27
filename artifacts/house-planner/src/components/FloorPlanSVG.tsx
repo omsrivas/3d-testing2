@@ -309,6 +309,9 @@ function BalconyHatch({ room, ox, oy }: { room: Room; ox: number; oy: number }) 
 }
 
 function RoomLabel({ room, ox, oy }: { room: Room; ox: number; oy: number }) {
+  // Skip label for entrance gate — gate bars make it obvious
+  if (room.type === "entrance_gate") return null;
+
   const cx    = ox + px(room.x) + px(room.width) / 2;
   const cy    = oy + px(room.y) + px(room.depth) / 2;
   const label = ROOM_LABELS[room.type] ?? room.type.toUpperCase().replace(/_/g, " ");
@@ -317,18 +320,27 @@ function RoomLabel({ room, ox, oy }: { room: Room; ox: number; oy: number }) {
 
   const roomPx   = px(room.width);
   const roomPxH  = px(room.depth);
-  const nameSize = Math.min(10, (roomPx * 0.82) / (label.length * 0.58));
-  const subSize  = Math.min(8, (roomPx * 0.78) / (dims.length * 0.55));
-  const showSub  = subSize >= 5.5 && roomPxH >= 28;
+  const nameSize = Math.min(10, (roomPx * 0.80) / (label.length * 0.58));
+  const subSize  = Math.min(7.5, (roomPx * 0.76) / (dims.length * 0.55));
+  const showSub  = subSize >= 5.5 && roomPxH >= 32;
 
-  if (nameSize < 4.5 || roomPxH < 18) return null;
+  if (nameSize < 4.5 || roomPxH < 20) return null;
 
-  const lineH = showSub ? nameSize * 1.3 : 0;
-  const totalH = nameSize + (showSub ? lineH + subSize * 2.4 : 0);
+  const lineH  = showSub ? nameSize * 1.35 : 0;
+  const totalH = nameSize + (showSub ? lineH + subSize * 2.5 : 0);
   const startY = cy - totalH / 2 + nameSize;
+
+  // Background pill — prevents overlap with furniture
+  const bgW = Math.min(roomPx * 0.86, label.length * nameSize * 0.62 + 14);
+  const bgH = totalH + 8;
+  const bgX = cx - bgW / 2;
+  const bgY = startY - nameSize - 3;
 
   return (
     <g>
+      {/* White background for legibility over furniture */}
+      <rect x={bgX} y={bgY} width={bgW} height={bgH}
+        fill="rgba(255,255,255,0.82)" rx="2" />
       <text x={cx} y={startY}
         textAnchor="middle"
         fontFamily="Arial, Helvetica, sans-serif"
@@ -344,7 +356,7 @@ function RoomLabel({ room, ox, oy }: { room: Room; ox: number; oy: number }) {
             fontSize={subSize} fill={C.labelSub} letterSpacing="0.02em">
             {dims}
           </text>
-          <text x={cx} y={startY + lineH + subSize * 1.55}
+          <text x={cx} y={startY + lineH + subSize * 1.6}
             textAnchor="middle"
             fontFamily="Arial, Helvetica, sans-serif"
             fontSize={subSize} fill={C.labelSub} letterSpacing="0.02em">

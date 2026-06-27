@@ -579,46 +579,39 @@ function ParkingFurniture({ room, ox, oy }: { room: Room; ox:number; oy:number }
   const cw   = landscape ? carL : carW;   // svg width
   const ch   = landscape ? carW : carL;   // svg height
 
+  // Wheel radius — small circles, proportional to shorter car dimension
+  const wR = Math.max(3.5, Math.min(cw * 0.07, ch * 0.09, 7));
+  // Windscreen height
+  const wsH = ch * 0.21;
+  const rsH = ch * 0.15;
+
   return (
     <g>
       {/* Drop shadow */}
-      <rect x={carX + 3} y={carY + 3} width={cw} height={ch} rx="6"
-        fill="rgba(0,0,0,0.10)" />
-      {/* Car body — near-white sedan */}
-      <rect x={carX} y={carY} width={cw} height={ch} rx="6"
-        fill={F.car} stroke={F.carS} strokeWidth={F.sw} />
-      {/* Windscreen — dark tinted glass */}
-      <rect x={carX + cw*0.12} y={carY + ch*0.07} width={cw*0.76} height={ch*0.19}
-        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="3" />
-      {/* Rear window — dark tinted glass */}
-      <rect x={carX + cw*0.14} y={carY + ch*0.74} width={cw*0.72} height={ch*0.17}
-        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="3" />
-      {/* Side windows */}
-      <rect x={carX + cw*0.10} y={carY + ch*0.30} width={cw*0.22} height={ch*0.13}
-        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
-      <rect x={carX + cw*0.68} y={carY + ch*0.30} width={cw*0.22} height={ch*0.13}
-        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
-      <rect x={carX + cw*0.10} y={carY + ch*0.44} width={cw*0.22} height={ch*0.13}
-        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
-      <rect x={carX + cw*0.68} y={carY + ch*0.44} width={cw*0.22} height={ch*0.13}
-        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
-      {/* Roof panel centre */}
-      <rect x={carX + cw*0.15} y={carY + ch*0.30} width={cw*0.70} height={ch*0.38}
-        fill="rgba(220,222,228,0.50)" stroke="none" rx="1" />
-      {/* Wheels — 4 corners, dark with rim */}
+      <rect x={carX + 2} y={carY + 2} width={cw} height={ch} rx="5"
+        fill="rgba(0,0,0,0.12)" />
+      {/* Car body — clean white/light-grey */}
+      <rect x={carX} y={carY} width={cw} height={ch} rx="5"
+        fill="rgba(235,237,242,0.97)" stroke="rgba(40,50,65,0.85)" strokeWidth="1.2" />
+      {/* Front windshield */}
+      <rect x={carX + cw*0.09} y={carY + ch*0.05} width={cw*0.82} height={wsH}
+        fill="rgba(22,32,52,0.72)" rx="3" />
+      {/* Roof / cabin mid-section (slightly darker than body) */}
+      <rect x={carX + cw*0.07} y={carY + wsH} width={cw*0.86} height={ch - wsH - rsH}
+        fill="rgba(205,210,218,0.55)" stroke="none" />
+      {/* Rear windshield */}
+      <rect x={carX + cw*0.11} y={carY + ch - rsH - ch*0.05} width={cw*0.78} height={rsH}
+        fill="rgba(22,32,52,0.60)" rx="2" />
+      {/* 4 wheels — small dark circles at corner wheel-well positions */}
       {([
-        [carX - cw*0.05, carY + ch*0.08],
-        [carX + cw*0.88, carY + ch*0.08],
-        [carX - cw*0.05, carY + ch*0.78],
-        [carX + cw*0.88, carY + ch*0.78],
+        [carX + cw*0.14, carY + ch*0.11],
+        [carX + cw*0.86, carY + ch*0.11],
+        [carX + cw*0.14, carY + ch*0.89],
+        [carX + cw*0.86, carY + ch*0.89],
       ] as [number,number][]).map(([wx, wy], i) => (
         <g key={i}>
-          <ellipse cx={wx + cw*0.085} cy={wy + ch*0.065}
-            rx={cw*0.085} ry={ch*0.065}
-            fill="rgba(30,35,42,0.90)" />
-          <ellipse cx={wx + cw*0.085} cy={wy + ch*0.065}
-            rx={cw*0.048} ry={ch*0.038}
-            fill="rgba(140,145,155,0.70)" />
+          <circle cx={wx} cy={wy} r={wR}     fill="rgba(25,30,40,0.90)" />
+          <circle cx={wx} cy={wy} r={wR*0.5} fill="rgba(130,138,150,0.65)" />
         </g>
       ))}
     </g>
@@ -714,59 +707,69 @@ function EntranceGateElements({ room, ox, oy }: { room: Room; ox:number; oy:numb
   const rx = ox + m(room.x), ry = oy + m(room.y);
   const rw = m(room.width),  rh = m(room.depth);
 
-  // Boundary wall posts at corners
-  const postS = Math.max(m(0.18), 6);
-  // Gate opening (centred or left-aligned)
-  const gateW = cl(m(3.0), m(2.5), rw * 0.60);
+  // Gate opening: 40–55% of room width, centred
+  const gateW = cl(m(2.8), m(2.0), rw * 0.50);
   const gateX = rx + (rw - gateW) / 2;
+  const wallL  = gateX - rx;           // wall section width on left
+  const wallR  = rx + rw - gateX - gateW; // wall section width on right
 
-  // Gate bars — thicker for visibility
-  const nBars = Math.max(4, Math.round(gateW / m(0.22)));
-  const barW  = 2.5;
-
-  // Paving in gate area
-  const pathH = rh;
+  // Gate post thickness
+  const postS  = Math.max(m(0.22), 7);
+  // Iron bars
+  const nBars  = Math.max(5, Math.round(gateW / m(0.20)));
+  const barSp  = gateW / nBars;
+  const midX   = gateX + gateW / 2;     // split point (two leaves)
 
   return (
     <g>
-      {/* Paving path through gate */}
-      <PavingSlabs x={gateX} y={ry} w={gateW} h={pathH} />
+      {/* ── Compound wall stubs left and right of opening ── */}
+      <rect x={rx} y={ry} width={wallL} height={rh}
+        fill="rgba(168,155,132,0.62)" stroke="rgba(70,58,42,0.72)" strokeWidth="0.8" />
+      <rect x={gateX + gateW} y={ry} width={wallR} height={rh}
+        fill="rgba(168,155,132,0.62)" stroke="rgba(70,58,42,0.72)" strokeWidth="0.8" />
 
-      {/* Boundary wall segments (left and right of gate) */}
-      <rect x={rx} y={ry + rh * 0.2} width={gateX - rx} height={m(0.23)}
-        fill="rgba(180,168,148,0.70)" stroke="rgba(90,80,65,0.80)" strokeWidth={0.8} />
-      <rect x={gateX + gateW} y={ry + rh * 0.2} width={rx + rw - gateX - gateW} height={m(0.23)}
-        fill="rgba(180,168,148,0.70)" stroke="rgba(90,80,65,0.80)" strokeWidth={0.8} />
+      {/* ── Light paving fill in gate opening ── */}
+      <rect x={gateX} y={ry} width={gateW} height={rh}
+        fill="rgba(200,190,170,0.45)" />
 
-      {/* Gate posts */}
-      <rect x={gateX - postS} y={ry} width={postS} height={rh}
-        fill="rgba(150,135,110,0.65)" stroke={F.gate} strokeWidth={0.8} />
-      <rect x={gateX + gateW} y={ry} width={postS} height={rh}
-        fill="rgba(150,135,110,0.65)" stroke={F.gate} strokeWidth={0.8} />
+      {/* ── Gate posts (flanking the opening) ── */}
+      <rect x={gateX - postS} y={ry - rh * 0.1} width={postS} height={rh * 1.2}
+        fill="rgba(88,74,52,0.88)" stroke="rgba(48,38,24,0.90)" strokeWidth="0.8" rx="1" />
+      <rect x={gateX + gateW}   y={ry - rh * 0.1} width={postS} height={rh * 1.2}
+        fill="rgba(88,74,52,0.88)" stroke="rgba(48,38,24,0.90)" strokeWidth="0.8" rx="1" />
 
-      {/* Gate bars (left leaf) */}
-      {Array.from({ length: Math.ceil(nBars / 2) }).map((_, i) => (
-        <line key={`l${i}`}
-          x1={gateX + (i + 0.5) * (gateW/2) / Math.ceil(nBars/2)} y1={ry + rh * 0.05}
-          x2={gateX + (i + 0.5) * (gateW/2) / Math.ceil(nBars/2)} y2={ry + rh * 0.95}
-          stroke={F.gate} strokeWidth={barW} />
-      ))}
-      {/* Gate bars (right leaf) */}
-      {Array.from({ length: Math.ceil(nBars / 2) }).map((_, i) => (
-        <line key={`r${i}`}
-          x1={gateX + gateW/2 + (i + 0.5) * (gateW/2) / Math.ceil(nBars/2)} y1={ry + rh * 0.05}
-          x2={gateX + gateW/2 + (i + 0.5) * (gateW/2) / Math.ceil(nBars/2)} y2={ry + rh * 0.95}
-          stroke={F.gate} strokeWidth={barW} />
-      ))}
-      {/* Gate horizontal rails */}
-      <line x1={gateX} y1={ry + rh * 0.25} x2={gateX + gateW/2} y2={ry + rh * 0.25}
-        stroke={F.gate} strokeWidth={2} />
-      <line x1={gateX + gateW/2} y1={ry + rh * 0.25} x2={gateX + gateW} y2={ry + rh * 0.25}
-        stroke={F.gate} strokeWidth={2} />
-      <line x1={gateX} y1={ry + rh * 0.75} x2={gateX + gateW/2} y2={ry + rh * 0.75}
-        stroke={F.gate} strokeWidth={2} />
-      <line x1={gateX + gateW/2} y1={ry + rh * 0.75} x2={gateX + gateW} y2={ry + rh * 0.75}
-        stroke={F.gate} strokeWidth={2} />
+      {/* ── Iron bars — evenly spaced across full opening ── */}
+      {Array.from({ length: nBars }).map((_, i) => {
+        const bx = gateX + (i + 0.5) * barSp;
+        return (
+          <line key={i}
+            x1={bx} y1={ry + 1} x2={bx} y2={ry + rh - 1}
+            stroke={F.gate} strokeWidth="2.2" strokeLinecap="round" />
+        );
+      })}
+
+      {/* ── Two horizontal rails (split at mid = two gate leaves) ── */}
+      <line x1={gateX} y1={ry + rh * 0.30} x2={midX - 1} y2={ry + rh * 0.30}
+        stroke={F.gate} strokeWidth="2" />
+      <line x1={midX + 1} y1={ry + rh * 0.30} x2={gateX + gateW} y2={ry + rh * 0.30}
+        stroke={F.gate} strokeWidth="2" />
+      <line x1={gateX} y1={ry + rh * 0.70} x2={midX - 1} y2={ry + rh * 0.70}
+        stroke={F.gate} strokeWidth="2" />
+      <line x1={midX + 1} y1={ry + rh * 0.70} x2={gateX + gateW} y2={ry + rh * 0.70}
+        stroke={F.gate} strokeWidth="2" />
+
+      {/* ── Small plant pots flanking the gate posts ── */}
+      <circle cx={gateX - postS - m(0.18)} cy={ry + rh * 0.5} r={m(0.14)}
+        fill={F.plant} stroke={F.plantS} strokeWidth="0.6" />
+      <circle cx={gateX + gateW + postS + m(0.18)} cy={ry + rh * 0.5} r={m(0.14)}
+        fill={F.plant} stroke={F.plantS} strokeWidth="0.6" />
+
+      {/* ── "GATE" label centred in opening ── */}
+      <text x={midX} y={ry + rh * 0.5 + 3.5}
+        textAnchor="middle"
+        fontFamily="Arial, Helvetica, sans-serif"
+        fontSize="7" fontWeight="700" letterSpacing="0.10em"
+        fill="rgba(55,42,28,0.80)">GATE</text>
     </g>
   );
 }
