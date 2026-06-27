@@ -8,11 +8,11 @@ import { exportSVG, exportPNG, exportPDF } from "@/lib/exportUtils";
 
 import {
   Building2, RefreshCw, AlertTriangle,
-  ZoomIn, ZoomOut, Maximize2, Download,
+  ZoomIn, ZoomOut, Maximize2,
   BedDouble, Bath, Car, Compass, Layers3,
   ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
-  Minus, Plus, ChevronUp, ChevronDown,
-  FileImage, FileCode, Printer, PanelLeftClose, PanelLeftOpen,
+  Minus, Plus, X,
+  FileImage, FileCode, Printer, PanelLeftClose, PanelLeftOpen, Settings2,
 } from "lucide-react";
 
 // ─── Unit helpers ─────────────────────────────────────────────────────────────
@@ -47,6 +47,17 @@ const DEFAULT_INPUT: LayoutInput = {
   facingDirection: "N", floors: 2, bedrooms: 3, bathrooms: 3,
   hasBalcony: true, hasParking: true, hasStaircase: true, vastuCompliant: true,
 };
+
+// ─── Responsive hook ──────────────────────────────────────────────────────────
+function useWindowSize() {
+  const [size, setSize] = useState({ w: typeof window !== "undefined" ? window.innerWidth : 1280 });
+  useEffect(() => {
+    const handler = () => setSize({ w: window.innerWidth });
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return size;
+}
 
 // ─── UI primitives ─────────────────────────────────────────────────────────────
 
@@ -83,7 +94,7 @@ function DimInput({
       }}>
         <button onClick={() => onChange(Math.max(minFt, valueFt - 1))}
           className="flex items-center justify-center"
-          style={{ width: 28, height: 34, color: T.textSec, flexShrink: 0 }}>
+          style={{ width: 28, height: 36, color: T.textSec, flexShrink: 0 }}>
           <Minus size={11} />
         </button>
         <input
@@ -97,15 +108,15 @@ function DimInput({
             flex: 1, background: "transparent", border: "none", outline: "none",
             textAlign: "center", fontSize: 13, fontWeight: 600,
             fontFamily: "ui-monospace, monospace", color: T.textPri,
-            height: 34, minWidth: 0,
+            height: 36, minWidth: 32,
           }}
         />
         <button onClick={() => onChange(Math.min(maxFt, valueFt + 1))}
           className="flex items-center justify-center"
-          style={{ width: 28, height: 34, color: T.textSec, flexShrink: 0 }}>
+          style={{ width: 28, height: 36, color: T.textSec, flexShrink: 0 }}>
           <Plus size={11} />
         </button>
-        <span style={{ fontSize: 10, color: T.textMut, paddingRight: 10, flexShrink: 0 }}>ft</span>
+        <span style={{ fontSize: 10, color: T.textMut, paddingRight: 8, flexShrink: 0 }}>ft</span>
       </div>
     </div>
   );
@@ -121,16 +132,16 @@ function Stepper({
     }}>
       <button onClick={() => onChange(Math.max(min, value - 1))}
         className="flex items-center justify-center"
-        style={{ width: 32, height: 32, color: T.textSec }}>
+        style={{ width: 36, height: 36, color: T.textSec }}>
         <Minus size={12} />
       </button>
       <span style={{
-        flex: 1, textAlign: "center", fontSize: 14, fontWeight: 600,
-        fontFamily: "ui-monospace, monospace", color: T.textPri, lineHeight: "32px",
+        flex: 1, textAlign: "center", fontSize: 15, fontWeight: 600,
+        fontFamily: "ui-monospace, monospace", color: T.textPri, lineHeight: "36px",
       }}>{value}</span>
       <button onClick={() => onChange(Math.min(max, value + 1))}
         className="flex items-center justify-center"
-        style={{ width: 32, height: 32, color: T.textSec }}>
+        style={{ width: 36, height: 36, color: T.textSec }}>
         <Plus size={12} />
       </button>
     </div>
@@ -145,19 +156,19 @@ function CompassPicker({ value, onChange }: { value: string; onChange: (v: strin
     { d: "W", icon: ArrowLeft },
   ];
   return (
-    <div className="grid grid-cols-4 gap-1">
+    <div className="grid grid-cols-4 gap-1.5">
       {DIRS.map(({ d, icon: Icon }) => {
         const active = value === d;
         return (
           <button key={d} onClick={() => onChange(d)}
-            className="flex flex-col items-center gap-1 py-2 rounded-lg transition-all"
+            className="flex flex-col items-center gap-1 py-2.5 rounded-lg transition-all"
             style={{
               background: active ? T.accentDim : T.inputBg,
               border: `1px solid ${active ? T.accentBorder : T.inputBorder}`,
               color: active ? T.accent : T.textSec,
             }}>
-            <Icon size={12} />
-            <span style={{ fontSize: 9, fontWeight: 700 }}>{d}</span>
+            <Icon size={13} />
+            <span style={{ fontSize: 10, fontWeight: 700 }}>{d}</span>
           </button>
         );
       })}
@@ -167,17 +178,17 @@ function CompassPicker({ value, onChange }: { value: string; onChange: (v: strin
 
 function FloorPills({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1.5">
       {[1, 2, 3].map(n => {
         const active = value === n;
         return (
           <button key={n} onClick={() => onChange(n)}
-            className="flex-1 py-1.5 rounded-md transition-all"
+            className="flex-1 py-2 rounded-md transition-all"
             style={{
               background: active ? T.accentDim : T.inputBg,
               border: `1px solid ${active ? T.accentBorder : T.inputBorder}`,
               color: active ? T.accent : T.textSec,
-              fontSize: 11, fontWeight: 700,
+              fontSize: 12, fontWeight: 700,
             }}>
             G{n > 1 ? `+${n - 1}` : ""}
           </button>
@@ -191,25 +202,25 @@ function FeatureRow({ icon: Icon, label, checked, onChange }: {
   icon: React.ElementType; label: string; checked: boolean; onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer"
+    <div className="flex items-center justify-between py-2.5 px-3 rounded-lg cursor-pointer"
       style={{
         background: checked ? T.greenDim : "transparent",
         border: `1px solid ${checked ? "rgba(128,184,80,0.18)" : "transparent"}`,
       }}
       onClick={() => onChange(!checked)}>
       <div className="flex items-center gap-2.5">
-        <Icon size={12} style={{ color: checked ? T.green : T.textMut }} />
-        <span style={{ fontSize: 12, color: checked ? T.textPri : T.textSec }}>{label}</span>
+        <Icon size={13} style={{ color: checked ? T.green : T.textMut }} />
+        <span style={{ fontSize: 13, color: checked ? T.textPri : T.textSec }}>{label}</span>
       </div>
       <div className="relative" style={{
-        width: 34, height: 18, borderRadius: 9,
+        width: 36, height: 20, borderRadius: 10,
         background: checked ? "rgba(128,184,80,0.50)" : T.inputBg,
         border: `1px solid ${checked ? "rgba(128,184,80,0.40)" : T.inputBorder}`,
       }}>
         <div className="absolute top-0.5 transition-all" style={{
-          width: 14, height: 14, borderRadius: "50%",
+          width: 16, height: 16, borderRadius: "50%",
           background: checked ? T.green : T.textMut,
-          left: checked ? 17 : 2,
+          left: checked ? 18 : 2,
         }} />
       </div>
     </div>
@@ -232,17 +243,19 @@ function StatChip({ label, value }: { label: string; value: string }) {
 }
 
 // ─── Config / Input panel ──────────────────────────────────────────────────────
-function ConfigPanel({ input, setInput, onGenerate, isGenerating }: {
+function ConfigPanel({ input, setInput, onGenerate, isGenerating, onClose, isMobile }: {
   input: LayoutInput;
   setInput: (fn: (prev: LayoutInput) => LayoutInput) => void;
   onGenerate: () => void;
   isGenerating: boolean;
+  onClose?: () => void;
+  isMobile?: boolean;
 }) {
   const wFt = mToFt(input.plotWidth);
   const dFt = mToFt(input.plotDepth);
 
   return (
-    <div className="flex flex-col gap-0 flex-1 overflow-y-auto" style={{ padding: "20px 16px" }}>
+    <div className="flex flex-col gap-0 flex-1 overflow-y-auto" style={{ padding: isMobile ? "16px 16px 24px" : "20px 16px" }}>
       <SectionHead icon={Compass} label="Plot Dimensions" />
       <div className="grid grid-cols-2 gap-2 mb-4">
         <DimInput label="Width" valueFt={wFt} minFt={14} maxFt={200}
@@ -307,11 +320,11 @@ function ConfigPanel({ input, setInput, onGenerate, isGenerating }: {
 
       {/* Generate button */}
       <button
-        onClick={onGenerate}
+        onClick={() => { onGenerate(); onClose?.(); }}
         disabled={isGenerating}
         className="w-full flex items-center justify-center gap-2 rounded-xl transition-all"
         style={{
-          height: 44, marginTop: 4,
+          height: 48, marginTop: 4,
           background: `linear-gradient(135deg, #c87838 0%, #a05820 100%)`,
           border: "1px solid rgba(200,120,56,0.40)",
           color: "#fff", fontSize: 13, fontWeight: 700,
@@ -332,10 +345,10 @@ function ConfigPanel({ input, setInput, onGenerate, isGenerating }: {
 
 // ─── Toolbar button ────────────────────────────────────────────────────────────
 function ToolBtn({
-  icon: Icon, label, onClick, active, danger,
+  icon: Icon, label, onClick, active, danger, hideLabel,
 }: {
   icon: React.ElementType; label: string; onClick: () => void;
-  active?: boolean; danger?: boolean;
+  active?: boolean; danger?: boolean; hideLabel?: boolean;
 }) {
   return (
     <button
@@ -343,7 +356,8 @@ function ToolBtn({
       title={label}
       className="flex flex-col items-center gap-0.5 rounded-lg transition-all"
       style={{
-        padding: "6px 10px", minWidth: 52,
+        padding: hideLabel ? "6px 8px" : "6px 10px",
+        minWidth: hideLabel ? 36 : 48,
         background: active ? "rgba(200,120,56,0.14)" : "transparent",
         border: `1px solid ${active ? "rgba(200,120,56,0.35)" : "transparent"}`,
         color: danger ? "#d04040" : active ? "#c87838" : "#4A3A28",
@@ -356,26 +370,29 @@ function ToolBtn({
       }}
     >
       <Icon size={15} />
-      <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: "0.05em",
-        textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</span>
+      {!hideLabel && (
+        <span style={{ fontSize: 8.5, fontWeight: 600, letterSpacing: "0.05em",
+          textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</span>
+      )}
     </button>
   );
 }
 
 // ─── Floor tab ────────────────────────────────────────────────────────────────
-function FloorTab({ floor, active, label, onClick }: {
-  floor: number; active: boolean; label: string; onClick: () => void;
+function FloorTab({ floor, active, label, onClick, compact }: {
+  floor: number; active: boolean; label: string; onClick: () => void; compact?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className="px-4 py-1.5 rounded-md transition-all text-sm font-semibold"
+      className="px-3 py-1.5 rounded-md transition-all font-semibold"
       style={{
         background: active ? "#2C2218" : "transparent",
         border: `1px solid ${active ? "rgba(200,120,56,0.40)" : "rgba(100,80,50,0.15)"}`,
         color: active ? "#c87838" : "#7A6A58",
-        fontSize: 11, fontWeight: 700, letterSpacing: "0.06em",
+        fontSize: compact ? 10 : 11, fontWeight: 700, letterSpacing: "0.06em",
         fontFamily: "'Courier New', monospace",
+        padding: compact ? "4px 8px" : "4px 14px",
       }}
     >
       {label}
@@ -392,11 +409,24 @@ export default function HousePlannerPage() {
   const [currentFloor, setCurrentFloor] = useState(0);
   const [sidebarOpen, setSidebarOpen]   = useState(true);
 
+  const { w } = useWindowSize();
+  const isMobile  = w < 640;
+  const isTablet  = w >= 640 && w < 1024;
+  const isDesktop = w >= 1024;
+
+  // On mobile, default sidebar closed; on desktop open
+  useEffect(() => {
+    if (isMobile) setSidebarOpen(false);
+    else setSidebarOpen(true);
+  }, [isMobile]);
+
   // Zoom & pan state
   const [zoom, setZoom]   = useState(1);
   const [pan,  setPan]    = useState({ x: 0, y: 0 });
   const isPanning         = useRef(false);
   const lastMouse         = useRef({ x: 0, y: 0 });
+  const lastTouchDist     = useRef<number | null>(null);
+  const lastTouchPos      = useRef({ x: 0, y: 0 });
   const viewerRef         = useRef<HTMLDivElement>(null);
   const svgRef            = useRef<SVGSVGElement>(null);
   const [exporting, setExporting] = useState(false);
@@ -456,7 +486,7 @@ export default function HousePlannerPage() {
   // Auto-generate on first mount for preview
   useEffect(() => { generate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Zoom wheel handler (zoom toward cursor)
+  // Mouse wheel zoom
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
@@ -474,6 +504,7 @@ export default function HousePlannerPage() {
     });
   }, []);
 
+  // Mouse pan
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
     isPanning.current = true;
@@ -489,6 +520,53 @@ export default function HousePlannerPage() {
   }, []);
 
   const onMouseUp = useCallback(() => { isPanning.current = false; }, []);
+
+  // Touch pan & pinch-to-zoom
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      isPanning.current = true;
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 2) {
+      isPanning.current = false;
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      lastTouchDist.current = Math.sqrt(dx * dx + dy * dy);
+    }
+  }, []);
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 1 && isPanning.current) {
+      const dx = e.touches[0].clientX - lastTouchPos.current.x;
+      const dy = e.touches[0].clientY - lastTouchPos.current.y;
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      setPan(p => ({ x: p.x + dx, y: p.y + dy }));
+    } else if (e.touches.length === 2 && lastTouchDist.current !== null) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const factor = dist / lastTouchDist.current;
+      const viewer = viewerRef.current;
+      if (!viewer) return;
+      const rect = viewer.getBoundingClientRect();
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+      setZoom(z => {
+        const nz = Math.max(0.2, Math.min(8, z * factor));
+        setPan(p => ({
+          x: cx - (cx - p.x) * (nz / z),
+          y: cy - (cy - p.y) * (nz / z),
+        }));
+        return nz;
+      });
+      lastTouchDist.current = dist;
+    }
+  }, []);
+
+  const onTouchEnd = useCallback(() => {
+    isPanning.current = false;
+    lastTouchDist.current = null;
+  }, []);
 
   const handleExport = useCallback(async (type: "png" | "svg" | "pdf") => {
     if (!svgRef.current || exporting) return;
@@ -515,75 +593,80 @@ export default function HousePlannerPage() {
     };
   }, [layout, currentFloor]);
 
+  const sidebarWidth = isDesktop ? 260 : isTablet ? 220 : 0;
+
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "#1A1410", fontFamily: "'Courier New', monospace" }}>
 
-      {/* ── Left sidebar ─────────────────────────────────────────────────────── */}
-      <div style={{
-        width: sidebarOpen ? 260 : 0,
-        flexShrink: 0,
-        transition: "width 0.25s ease",
-        overflow: "hidden",
-        background: T.bg,
-        borderRight: `1px solid ${T.border}`,
-        display: "flex",
-        flexDirection: "column",
-      }}>
-        {/* Header */}
+      {/* ── Left sidebar (desktop/tablet) ─────────────────────────────────── */}
+      {!isMobile && (
         <div style={{
-          padding: "16px 16px 12px",
-          borderBottom: `1px solid ${T.border}`,
+          width: sidebarOpen ? sidebarWidth : 0,
           flexShrink: 0,
+          transition: "width 0.25s ease",
+          overflow: "hidden",
+          background: T.bg,
+          borderRight: `1px solid ${T.border}`,
+          display: "flex",
+          flexDirection: "column",
         }}>
-          <div className="flex items-center gap-2">
-            <Building2 size={16} style={{ color: T.accent }} />
-            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.10em",
-              color: T.textPri }}>FLOOR PLAN</span>
-            <span style={{ fontSize: 9, color: T.textMut, marginLeft: 2 }}>GEN</span>
-          </div>
-          <p style={{ fontSize: 9, color: T.textMut, marginTop: 4, letterSpacing: "0.06em" }}>
-            2D ARCHITECTURAL PLAN
-          </p>
-        </div>
-
-        {/* Stats bar */}
-        {stats && (
-          <div className="grid grid-cols-3 gap-1.5" style={{
-            padding: "10px 12px",
+          {/* Header */}
+          <div style={{
+            padding: "16px 16px 12px",
             borderBottom: `1px solid ${T.border}`,
             flexShrink: 0,
           }}>
-            <StatChip label="Rooms" value={String(stats.rooms)} />
-            <StatChip label="Built-up" value={stats.builtUp} />
-            <StatChip label="Vastu" value={stats.vastu} />
+            <div className="flex items-center gap-2">
+              <Building2 size={16} style={{ color: T.accent }} />
+              <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.10em",
+                color: T.textPri }}>FLOOR PLAN</span>
+              <span style={{ fontSize: 9, color: T.textMut, marginLeft: 2 }}>GEN</span>
+            </div>
+            <p style={{ fontSize: 9, color: T.textMut, marginTop: 4, letterSpacing: "0.06em" }}>
+              2D ARCHITECTURAL PLAN
+            </p>
           </div>
-        )}
 
-        {/* Config */}
-        <ConfigPanel
-          input={input} setInput={setInput}
-          onGenerate={generate} isGenerating={generating}
-        />
-      </div>
+          {/* Stats bar */}
+          {stats && (
+            <div className="grid grid-cols-3 gap-1.5" style={{
+              padding: "10px 12px",
+              borderBottom: `1px solid ${T.border}`,
+              flexShrink: 0,
+            }}>
+              <StatChip label="Rooms" value={String(stats.rooms)} />
+              <StatChip label="Built-up" value={stats.builtUp} />
+              <StatChip label="Vastu" value={stats.vastu} />
+            </div>
+          )}
 
-      {/* ── Main canvas area ──────────────────────────────────────────────────── */}
+          <ConfigPanel
+            input={input} setInput={setInput}
+            onGenerate={generate} isGenerating={generating}
+          />
+        </div>
+      )}
+
+      {/* ── Main canvas area ──────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 overflow-hidden">
 
         {/* Toolbar */}
         <div style={{
-          height: 52, flexShrink: 0,
+          height: isMobile ? 48 : 52,
+          flexShrink: 0,
           background: "#F2EDE4",
           borderBottom: "1px solid #C4B090",
           display: "flex", alignItems: "center",
-          padding: "0 12px", gap: 4,
+          padding: isMobile ? "0 8px" : "0 12px",
+          gap: isMobile ? 2 : 4,
         }}>
-          {/* Sidebar toggle */}
+          {/* Sidebar toggle (desktop/tablet) or settings trigger (mobile) */}
           <button
             onClick={() => setSidebarOpen(s => !s)}
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-            className="flex items-center justify-center rounded-lg mr-2 transition-all"
+            className="flex items-center justify-center rounded-lg mr-1 transition-all"
             style={{
-              width: 32, height: 32, flexShrink: 0,
+              width: 34, height: 34, flexShrink: 0,
               background: "transparent",
               border: "1px solid transparent",
               color: "#6A5A48",
@@ -591,21 +674,27 @@ export default function HousePlannerPage() {
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(100,80,50,0.10)"; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
           >
-            {sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+            {isMobile
+              ? <Settings2 size={16} />
+              : sidebarOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />
+            }
           </button>
 
           {/* Divider */}
-          <div style={{ width: 1, height: 28, background: "#C4B090", marginRight: 4 }} />
+          <div style={{ width: 1, height: 28, background: "#C4B090", marginRight: 2 }} />
 
           {/* Floor tabs */}
           {layout && (
-            <div className="flex items-center gap-1 mr-4">
-              <span style={{ fontSize: 9, fontWeight: 600, color: "#9A8A78",
-                letterSpacing: "0.10em", textTransform: "uppercase", marginRight: 4 }}>Floor</span>
+            <div className="flex items-center gap-1 mr-2">
+              {!isMobile && (
+                <span style={{ fontSize: 9, fontWeight: 600, color: "#9A8A78",
+                  letterSpacing: "0.10em", textTransform: "uppercase", marginRight: 4 }}>Floor</span>
+              )}
               {floorList.map(f => (
                 <FloorTab
                   key={f} floor={f} active={currentFloor === f}
                   label={f === 0 ? "GF" : `F${f}`}
+                  compact={isMobile}
                   onClick={() => {
                     setCurrentFloor(f);
                     setTimeout(fitToScreen, 80);
@@ -616,33 +705,35 @@ export default function HousePlannerPage() {
           )}
 
           {/* Divider */}
-          {layout && <div style={{ width: 1, height: 28, background: "#C4B090", marginRight: 4 }} />}
+          {layout && <div style={{ width: 1, height: 28, background: "#C4B090", marginRight: 2 }} />}
 
           {/* Zoom controls */}
-          <ToolBtn icon={ZoomOut} label="Zoom Out" onClick={() => setZoom(z => Math.max(0.2, z / 1.2))} />
-          <div style={{
-            fontSize: 11, fontWeight: 700, color: "#4A3A28",
-            fontFamily: "ui-monospace, monospace", width: 44, textAlign: "center",
-          }}>
-            {Math.round(zoom * 100)}%
-          </div>
-          <ToolBtn icon={ZoomIn} label="Zoom In" onClick={() => setZoom(z => Math.min(8, z * 1.2))} />
-          <ToolBtn icon={Maximize2} label="Fit" onClick={fitToScreen} />
+          <ToolBtn icon={ZoomOut} label="Zoom Out" hideLabel={isMobile} onClick={() => setZoom(z => Math.max(0.2, z / 1.2))} />
+          {!isMobile && (
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: "#4A3A28",
+              fontFamily: "ui-monospace, monospace", width: 44, textAlign: "center",
+            }}>
+              {Math.round(zoom * 100)}%
+            </div>
+          )}
+          <ToolBtn icon={ZoomIn} label="Zoom In" hideLabel={isMobile} onClick={() => setZoom(z => Math.min(8, z * 1.2))} />
+          <ToolBtn icon={Maximize2} label="Fit" hideLabel={isMobile} onClick={fitToScreen} />
 
           {/* Spacer */}
           <div className="flex-1" />
 
-          {/* Divider */}
-          <div style={{ width: 1, height: 28, background: "#C4B090", marginRight: 4 }} />
-
           {/* Export */}
           {layout && (
             <>
-              <ToolBtn icon={FileImage} label="PNG"
+              <div style={{ width: 1, height: 28, background: "#C4B090", marginRight: 2 }} />
+              <ToolBtn icon={FileImage} label="PNG" hideLabel={isMobile}
                 onClick={() => handleExport("png")} />
-              <ToolBtn icon={FileCode} label="SVG"
-                onClick={() => handleExport("svg")} />
-              <ToolBtn icon={Printer} label="PDF / Print"
+              {!isMobile && (
+                <ToolBtn icon={FileCode} label="SVG"
+                  onClick={() => handleExport("svg")} />
+              )}
+              <ToolBtn icon={Printer} label={isMobile ? "Print" : "PDF / Print"} hideLabel={isMobile}
                 onClick={() => handleExport("pdf")} />
             </>
           )}
@@ -657,17 +748,20 @@ export default function HousePlannerPage() {
             backgroundImage: "radial-gradient(circle, rgba(80,60,40,0.15) 1px, transparent 1px)",
             backgroundSize: "24px 24px",
             cursor: isPanning.current ? "grabbing" : "grab",
+            touchAction: "none",
           }}
           onWheel={onWheel}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
           onMouseLeave={onMouseUp}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
         >
           {/* Empty state */}
           {!layout && !generating && errors.length === 0 && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5">
-              {/* Architectural frame hint */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 px-4">
               <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.18 }}>
                 <rect x="8" y="8" width="144" height="104" fill="none" stroke="#c8b880" strokeWidth="2" />
                 <rect x="12" y="12" width="136" height="96" fill="none" stroke="#c8b880" strokeWidth="0.6" />
@@ -690,7 +784,9 @@ export default function HousePlannerPage() {
                   color: "rgba(180,160,120,0.55)", fontSize: 11,
                   fontFamily: "'Courier New', monospace", letterSpacing: "0.06em",
                 }}>
-                  Enter plot dimensions and click GENERATE PLAN.
+                  {isMobile
+                    ? "Tap the settings icon to configure and generate a plan."
+                    : "Enter plot dimensions and click GENERATE PLAN."}
                 </p>
               </div>
             </div>
@@ -748,13 +844,14 @@ export default function HousePlannerPage() {
           {/* Status bar (bottom) */}
           {layout && (
             <div style={{
-              position: "absolute", bottom: 12, left: "50%",
+              position: "absolute", bottom: isMobile ? 72 : 12, left: "50%",
               transform: "translateX(-50%)",
               background: "rgba(20,14,8,0.80)",
               border: "1px solid rgba(100,80,50,0.40)",
               borderRadius: 20, padding: "4px 14px",
               display: "flex", alignItems: "center", gap: 12,
               backdropFilter: "blur(6px)",
+              whiteSpace: "nowrap",
             }}>
               <span style={{ fontSize: 10, color: "rgba(200,180,140,0.70)",
                 fontFamily: "ui-monospace, monospace", letterSpacing: "0.08em" }}>
@@ -763,12 +860,119 @@ export default function HousePlannerPage() {
               <span style={{ width: 1, height: 10, background: "rgba(100,80,50,0.40)" }} />
               <span style={{ fontSize: 10, color: "rgba(200,180,140,0.50)",
                 fontFamily: "ui-monospace, monospace" }}>
-                Scroll to zoom · Drag to pan
+                {isMobile ? "Pinch to zoom · Drag to pan" : "Scroll to zoom · Drag to pan"}
               </span>
             </div>
           )}
+
+          {/* Mobile: floating generate button */}
+          {isMobile && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex items-center gap-2 rounded-2xl transition-all"
+              style={{
+                position: "absolute", bottom: 16, right: 16,
+                height: 48, padding: "0 20px",
+                background: `linear-gradient(135deg, #c87838 0%, #a05820 100%)`,
+                border: "1px solid rgba(200,120,56,0.50)",
+                color: "#fff", fontSize: 12, fontWeight: 700,
+                letterSpacing: "0.06em",
+                boxShadow: "0 4px 20px rgba(0,0,0,0.50)",
+              }}
+            >
+              <Settings2 size={14} />
+              SETTINGS
+            </button>
+          )}
         </div>
       </div>
+
+      {/* ── Mobile: bottom sheet overlay ──────────────────────────────────── */}
+      {isMobile && (
+        <>
+          {/* Backdrop */}
+          <div
+            onClick={() => setSidebarOpen(false)}
+            style={{
+              position: "fixed", inset: 0,
+              background: "rgba(0,0,0,0.60)",
+              backdropFilter: "blur(2px)",
+              zIndex: 40,
+              opacity: sidebarOpen ? 1 : 0,
+              pointerEvents: sidebarOpen ? "auto" : "none",
+              transition: "opacity 0.25s ease",
+            }}
+          />
+          {/* Sheet */}
+          <div style={{
+            position: "fixed", left: 0, right: 0, bottom: 0,
+            maxHeight: "88vh",
+            background: T.bg,
+            borderTop: `1px solid ${T.border}`,
+            borderRadius: "20px 20px 0 0",
+            zIndex: 50,
+            display: "flex",
+            flexDirection: "column",
+            transform: sidebarOpen ? "translateY(0)" : "translateY(100%)",
+            transition: "transform 0.30s cubic-bezier(0.32, 0.72, 0, 1)",
+          }}>
+            {/* Sheet handle + header */}
+            <div style={{
+              padding: "12px 16px",
+              borderBottom: `1px solid ${T.border}`,
+              flexShrink: 0,
+            }}>
+              {/* Drag handle */}
+              <div style={{
+                width: 40, height: 4, borderRadius: 2,
+                background: "rgba(128,184,80,0.25)",
+                margin: "0 auto 12px",
+              }} />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Building2 size={15} style={{ color: T.accent }} />
+                  <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: "0.10em", color: T.textPri }}>
+                    FLOOR PLAN
+                  </span>
+                  <span style={{ fontSize: 9, color: T.textMut }}>GEN</span>
+                </div>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center justify-center rounded-lg"
+                  style={{
+                    width: 32, height: 32,
+                    background: T.inputBg,
+                    border: `1px solid ${T.inputBorder}`,
+                    color: T.textSec,
+                  }}>
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Stats bar */}
+            {stats && (
+              <div className="grid grid-cols-3 gap-1.5" style={{
+                padding: "10px 12px",
+                borderBottom: `1px solid ${T.border}`,
+                flexShrink: 0,
+              }}>
+                <StatChip label="Rooms" value={String(stats.rooms)} />
+                <StatChip label="Built-up" value={stats.builtUp} />
+                <StatChip label="Vastu" value={stats.vastu} />
+              </div>
+            )}
+
+            {/* Config panel */}
+            <ConfigPanel
+              input={input} setInput={setInput}
+              onGenerate={generate} isGenerating={generating}
+              onClose={() => setSidebarOpen(false)}
+              isMobile
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
