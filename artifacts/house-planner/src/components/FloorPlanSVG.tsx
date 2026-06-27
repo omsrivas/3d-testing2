@@ -5,202 +5,165 @@ import type {
 } from "@/lib/layoutEngine";
 
 // ─── Drawing constants ────────────────────────────────────────────────────────
-export const BASE_SCALE = 40;  // px per metre (base coordinate system)
-const MARGIN     = 90;         // px: space for dimension lines around plot
-const TITLE_H    = 72;         // px: title block height
-const DIM_OFFSET = 36;         // px: distance of dim line from plot edge
-const DIM_TICK   = 9;          // px: half-tick length on dimension lines
-const COMPASS_R  = 28;         // px: compass radius
+export const BASE_SCALE = 45;   // px per metre
+const MARGIN    = 108;          // space around plot for dimension lines
+const TITLE_H   = 88;           // title block height
+const DIM_GAP   = 44;           // offset of dimension line from plot edge
+const TICK      = 8;            // 45° tick arm length
+const EXT_T     = 16;           // exterior wall min thickness (px)
+const INT_T     = 10;           // interior wall min thickness (px)
 
 // ─── Unit helpers ─────────────────────────────────────────────────────────────
+const S          = BASE_SCALE;
+const px         = (m: number) => m * S;
 const M_TO_FT    = 3.28084;
 const M2_TO_SQFT = 10.7639;
-const fmtFt  = (m: number)  => `${Math.round(m * M_TO_FT)} ft`;
-const fmtSqft = (m2: number) => `${Math.round(m2 * M2_TO_SQFT)} sq ft`;
+const fmtFt      = (m: number) => `${Math.round(m * M_TO_FT)}'`;
+const fmtDims    = (w: number, d: number) =>
+  `${Math.round(w * M_TO_FT)}′ × ${Math.round(d * M_TO_FT)}′`;
+const fmtSqft    = (m2: number) => `${Math.round(m2 * M2_TO_SQFT)} sq ft`;
 
-// ─── Colours ─────────────────────────────────────────────────────────────────
+// ─── Colours ──────────────────────────────────────────────────────────────────
 const C = {
-  paper:       "#F8F5EF",
-  plotBg:      "#EFEBE3",
-  gridLine:    "rgba(100,90,70,0.06)",
-  extWall:     "#1E1A16",
-  intWall:     "#4A4038",
-  dimLine:     "#8A7A68",
-  dimText:     "#6A5A48",
-  doorLeaf:    "#7A4A20",
-  doorArc:     "#9A6030",
-  doorArcFill: "rgba(160,90,40,0.06)",
-  winFrame:    "#4478A0",
-  winGlass:    "rgba(140,200,240,0.40)",
-  stairLine:   "#6A5848",
-  stairAlt:    "rgba(100,80,60,0.08)",
-  stairFill:   "rgba(200,185,158,0.12)",
-  compass:     "#3A3028",
-  compassN:    "#B02818",
-  border:      "#C4B090",
-  labelBg:     "rgba(255,252,245,0.95)",
-  labelText:   "#1A1410",
-  areaText:    "#6A5A48",
-  setback:     "rgba(80,140,60,0.22)",
-  setbackFill: "rgba(80,140,60,0.04)",
-  titleBg:     "#EDE8DF",
-  titleBorder: "#C4B090",
-  titleText:   "#2A2218",
-  titleSub:    "#7A6A58",
-  scaleBar:    "#4A3A28",
-  parking:     "rgba(150,155,140,0.20)",
-};
+  paper:      "#FFFFFF",
+  plotBg:     "#FAFAFA",
+  wall:       "#0E0E0E",
+  border:     "#111111",
+  dimLine:    "#777777",
+  dimText:    "#444444",
+  label:      "#111111",
+  labelSub:   "#666666",
+  doorLine:   "#111111",
+  winFill:    "rgba(190,220,245,0.40)",
+  winLine:    "#111111",
+  stairFill:  "#EAE6DE",
+  stairAlt:   "#D9D3C8",
+  stairLine:  "#666666",
+  compassRed: "#CC1111",
+  scaleBar:   "#111111",
+  titleBg:    "#F3F3F1",
+  titleLine:  "#111111",
+  titleText:  "#111111",
+  titleSub:   "#666666",
+  hatch:      "rgba(60,110,60,0.22)",
+} as const;
 
+// Professional near-white room fills
 const ROOM_FILLS: Record<string, string> = {
-  living:         "rgba(252,238,202,0.88)",
-  dining:         "rgba(230,248,210,0.88)",
-  kitchen:        "rgba(255,242,168,0.88)",
-  master_bedroom: "rgba(226,212,248,0.88)",
-  bedroom:        "rgba(212,224,250,0.88)",
-  bathroom:       "rgba(188,236,250,0.88)",
-  toilet:         "rgba(188,236,250,0.85)",
-  balcony:        "rgba(184,224,192,0.82)",
-  parking:        "rgba(182,186,168,0.80)",
-  staircase:      "rgba(235,218,188,0.85)",
-  foyer:          "rgba(255,245,215,0.88)",
-  pooja:          "rgba(255,228,185,0.90)",
-  utility:        "rgba(215,210,195,0.80)",
-  passage:        "rgba(245,238,218,0.82)",
-  terrace:        "rgba(190,215,185,0.78)",
+  living:         "#FAFAF7",
+  dining:         "#F8FCF8",
+  kitchen:        "#FFFDF0",
+  master_bedroom: "#F8F5FC",
+  bedroom:        "#F5F8FD",
+  bathroom:       "#EDF6FD",
+  toilet:         "#EDF6FD",
+  balcony:        "#F0F8F0",
+  parking:        "#F3F3F0",
+  staircase:      "#F5F3EE",
+  foyer:          "#FDFCF7",
+  pooja:          "#FDF7EE",
+  utility:        "#F6F6F3",
+  passage:        "#FAFAFA",
+  terrace:        "#F2F5F0",
 };
 
 const ROOM_LABELS: Record<string, string> = {
-  living: "LIVING", dining: "DINING", kitchen: "KITCHEN",
-  master_bedroom: "MASTER BED", bedroom: "BEDROOM",
-  bathroom: "BATH", toilet: "W.C.", balcony: "BALCONY",
-  parking: "PARKING", staircase: "STAIR", foyer: "FOYER",
-  pooja: "POOJA", utility: "UTILITY", passage: "PASSAGE", terrace: "TERRACE",
+  living:         "LIVING ROOM",
+  dining:         "DINING ROOM",
+  kitchen:        "KITCHEN",
+  master_bedroom: "MASTER BEDROOM",
+  bedroom:        "BEDROOM",
+  bathroom:       "BATHROOM",
+  toilet:         "W.C.",
+  balcony:        "BALCONY",
+  parking:        "PARKING",
+  staircase:      "STAIRCASE",
+  foyer:          "FOYER",
+  pooja:          "POOJA ROOM",
+  utility:        "UTILITY",
+  passage:        "PASSAGE",
+  terrace:        "TERRACE",
 };
 
-// ─── Floor name helper ────────────────────────────────────────────────────────
 export function floorName(f: number) {
-  if (f === 0) return "GROUND FLOOR";
-  if (f === 1) return "FIRST FLOOR";
-  if (f === 2) return "SECOND FLOOR";
-  return `FLOOR ${f + 1}`;
+  if (f === 0) return "GROUND FLOOR PLAN";
+  if (f === 1) return "FIRST FLOOR PLAN";
+  if (f === 2) return "SECOND FLOOR PLAN";
+  return `FLOOR ${f + 1} PLAN`;
 }
 
-// ─── Geometry helpers ─────────────────────────────────────────────────────────
-const S = BASE_SCALE;
-const px = (m: number) => m * S;
+// ─── Wall geometry ────────────────────────────────────────────────────────────
+function isH(wall: Wall) { return Math.abs(wall.y2 - wall.y1) < 0.01; }
 
-function isHorizontalWall(wall: Wall) {
-  return Math.abs(wall.y2 - wall.y1) < 0.01;
-}
-
-/** Break a wall into drawn segments (gaps = doors + windows) */
 function wallSegments(
-  wall: Wall,
-  doors: Door[],
-  windows: WinType[],
+  wall: Wall, doors: Door[], wins: WinType[],
 ): Array<[number, number, number, number]> {
-  const isH = isHorizontalWall(wall);
-  const len  = wall.length;
-  type Gap = { t0: number; t1: number };
-  const gaps: Gap[] = [];
+  const horiz = isH(wall);
+  const len   = wall.length;
+  const gaps: { t0: number; t1: number }[] = [];
+
   for (const d of doors) {
     if (d.wallId !== wall.id) continue;
-    const dc = isH ? (d.x - wall.x1) : (d.y - wall.y1);
+    const dc = horiz ? d.x - wall.x1 : d.y - wall.y1;
     const hw = d.width / 2;
     gaps.push({ t0: (dc - hw) / len, t1: (dc + hw) / len });
   }
-  for (const w of windows) {
+  for (const w of wins) {
     if (w.wallId !== wall.id) continue;
-    const wc = isH ? (w.x - wall.x1) : (w.y - wall.y1);
+    const wc = horiz ? w.x - wall.x1 : w.y - wall.y1;
     const hw = w.width / 2;
     gaps.push({ t0: (wc - hw) / len, t1: (wc + hw) / len });
   }
   gaps.sort((a, b) => a.t0 - b.t0);
+
+  const lerp = (t: number): [number, number] => [
+    wall.x1 + (wall.x2 - wall.x1) * t,
+    wall.y1 + (wall.y2 - wall.y1) * t,
+  ];
+
   const segs: Array<[number, number, number, number]> = [];
   let t = 0;
   for (const g of gaps) {
-    const t0 = Math.max(0, g.t0);
-    const t1 = Math.min(1, g.t1);
+    const t0 = Math.max(0, g.t0), t1 = Math.min(1, g.t1);
     if (t0 > t + 0.001) {
-      segs.push([
-        wall.x1 + (wall.x2 - wall.x1) * t,
-        wall.y1 + (wall.y2 - wall.y1) * t,
-        wall.x1 + (wall.x2 - wall.x1) * t0,
-        wall.y1 + (wall.y2 - wall.y1) * t0,
-      ]);
+      const [ax, ay] = lerp(t), [bx, by] = lerp(t0);
+      segs.push([ax, ay, bx, by]);
     }
     t = t1;
   }
   if (t < 0.999) {
-    segs.push([
-      wall.x1 + (wall.x2 - wall.x1) * t,
-      wall.y1 + (wall.y2 - wall.y1) * t,
-      wall.x2, wall.y2,
-    ]);
+    const [ax, ay] = lerp(t);
+    segs.push([ax, ay, wall.x2, wall.y2]);
   }
   return segs;
 }
 
-// ─── SVG sub-components ───────────────────────────────────────────────────────
+// ─── Components ───────────────────────────────────────────────────────────────
 
-function RoomFill({ room, ox, oy }: { room: Room; ox: number; oy: number }) {
-  const x  = ox + px(room.x);
-  const y  = oy + px(room.y);
-  const rw = px(room.width);
-  const rh = px(room.depth);
-  const fill = ROOM_FILLS[room.type] ?? "rgba(220,215,200,0.80)";
-  return <rect x={x} y={y} width={rw} height={rh} fill={fill} />;
-}
-
-function RoomLabel({ room, ox, oy }: { room: Room; ox: number; oy: number }) {
-  const cx = ox + px(room.x) + px(room.width) / 2;
-  const cy = oy + px(room.y) + px(room.depth) / 2;
-  const label = ROOM_LABELS[room.type] ?? room.type.toUpperCase();
-  const area  = fmtSqft(room.area);
-  return (
-    <g>
-      <text
-        x={cx} y={cy - 3}
-        textAnchor="middle"
-        fontFamily="'Courier New', 'Courier', monospace"
-        fontSize={Math.min(10, px(room.width) / label.length * 1.6)}
-        fontWeight="700"
-        letterSpacing="0.06em"
-        fill={C.labelText}
-      >
-        {label}
-      </text>
-      <text
-        x={cx} y={cy + 11}
-        textAnchor="middle"
-        fontFamily="'Courier New', 'Courier', monospace"
-        fontSize={Math.min(8, px(room.width) / area.length * 1.3)}
-        fill={C.areaText}
-      >
-        {area}
-      </text>
-    </g>
-  );
-}
-
-function WallLines({ wall, doors, windows, ox, oy }: {
+function WallRect({ wall, doors, windows, ox, oy }: {
   wall: Wall; doors: Door[]; windows: WinType[]; ox: number; oy: number;
 }) {
-  const segs = wallSegments(wall, doors, windows);
-  const sw   = Math.max(2, px(wall.thickness));
-  const col  = wall.type === "external" ? C.extWall : C.intWall;
+  const horiz = isH(wall);
+  const T     = Math.max(wall.type === "external" ? EXT_T : INT_T, px(wall.thickness));
+  const segs  = wallSegments(wall, doors, windows);
+
   return (
     <>
-      {segs.map(([x1, y1, x2, y2], i) => (
-        <line
-          key={i}
-          x1={ox + px(x1)} y1={oy + px(y1)}
-          x2={ox + px(x2)} y2={oy + px(y2)}
-          stroke={col}
-          strokeWidth={sw}
-          strokeLinecap="square"
-        />
-      ))}
+      {segs.map(([x1, y1, x2, y2], i) =>
+        horiz ? (
+          <rect key={i}
+            x={ox + px(x1)} y={oy + px(y1) - T / 2}
+            width={Math.max(1, px(x2 - x1))} height={T}
+            fill={C.wall}
+          />
+        ) : (
+          <rect key={i}
+            x={ox + px(x1) - T / 2} y={oy + px(y1)}
+            width={T} height={Math.max(1, px(y2 - y1))}
+            fill={C.wall}
+          />
+        )
+      )}
     </>
   );
 }
@@ -209,83 +172,66 @@ function DoorSymbol({ door, wall, ox, oy }: {
   door: Door; wall: Wall | undefined; ox: number; oy: number;
 }) {
   if (!wall) return null;
-  const isH = isHorizontalWall(wall);
+  const horiz = isH(wall);
   const cx  = ox + px(door.x);
   const cy  = oy + px(door.y);
   const dw  = px(door.width);
 
-  if (isH) {
-    // Hinge at left end, swing south
-    const hx = cx - dw / 2, hy = cy;
-    return (
-      <g>
-        <path
-          d={`M ${cx + dw / 2},${hy} A ${dw},${dw} 0 0,0 ${hx},${hy + dw}`}
-          fill={C.doorArcFill}
-          stroke={C.doorArc}
-          strokeWidth="0.8"
-          strokeDasharray="3 2"
-        />
-        <line x1={hx} y1={hy} x2={hx} y2={hy + dw}
-          stroke={C.doorLeaf} strokeWidth="1.8" strokeLinecap="round" />
-      </g>
-    );
-  } else {
-    // Hinge at top end, swing east
-    const hx = cx, hy = cy - dw / 2;
-    return (
-      <g>
-        <path
-          d={`M ${hx},${cy + dw / 2} A ${dw},${dw} 0 0,1 ${hx + dw},${hy}`}
-          fill={C.doorArcFill}
-          stroke={C.doorArc}
-          strokeWidth="0.8"
-          strokeDasharray="3 2"
-        />
-        <line x1={hx} y1={hy} x2={hx + dw} y2={hy}
-          stroke={C.doorLeaf} strokeWidth="1.8" strokeLinecap="round" />
-      </g>
-    );
-  }
+  return horiz ? (
+    <g stroke={C.doorLine} fill="none" strokeWidth="1.2">
+      <line x1={cx - dw / 2} y1={cy} x2={cx - dw / 2} y2={cy + dw} />
+      <path d={`M ${cx + dw / 2},${cy} A ${dw},${dw} 0 0,0 ${cx - dw / 2},${cy + dw}`}
+        strokeDasharray="4 2.5" />
+    </g>
+  ) : (
+    <g stroke={C.doorLine} fill="none" strokeWidth="1.2">
+      <line x1={cx} y1={cy - dw / 2} x2={cx + dw} y2={cy - dw / 2} />
+      <path d={`M ${cx},${cy + dw / 2} A ${dw},${dw} 0 0,1 ${cx + dw},${cy - dw / 2}`}
+        strokeDasharray="4 2.5" />
+    </g>
+  );
 }
 
 function WindowSymbol({ win, wall, ox, oy }: {
   win: WinType; wall: Wall | undefined; ox: number; oy: number;
 }) {
   if (!wall) return null;
-  const isH   = isHorizontalWall(wall);
+  const horiz = isH(wall);
   const cx    = ox + px(win.x);
   const cy    = oy + px(win.y);
   const ww    = px(win.width);
-  const depth = win.type === "ventilator" ? 4 : 8;
+  const T     = Math.max(wall.type === "external" ? EXT_T : INT_T, px(wall.thickness));
+  const h     = T;
 
-  if (isH) {
-    return (
-      <g>
-        <rect x={cx - ww / 2} y={cy - depth / 2} width={ww} height={depth}
-          fill={C.winGlass} stroke={C.winFrame} strokeWidth="0.7" />
-        <line x1={cx - ww / 2} y1={cy} x2={cx + ww / 2} y2={cy}
-          stroke={C.winFrame} strokeWidth="0.8" />
-        <line x1={cx - ww / 4} y1={cy - depth / 2} x2={cx - ww / 4} y2={cy + depth / 2}
-          stroke={C.winFrame} strokeWidth="0.5" />
-        <line x1={cx + ww / 4} y1={cy - depth / 2} x2={cx + ww / 4} y2={cy + depth / 2}
-          stroke={C.winFrame} strokeWidth="0.5" />
-      </g>
-    );
-  } else {
-    return (
-      <g>
-        <rect x={cx - depth / 2} y={cy - ww / 2} width={depth} height={ww}
-          fill={C.winGlass} stroke={C.winFrame} strokeWidth="0.7" />
-        <line x1={cx} y1={cy - ww / 2} x2={cx} y2={cy + ww / 2}
-          stroke={C.winFrame} strokeWidth="0.8" />
-        <line x1={cx - depth / 2} y1={cy - ww / 4} x2={cx + depth / 2} y2={cy - ww / 4}
-          stroke={C.winFrame} strokeWidth="0.5" />
-        <line x1={cx - depth / 2} y1={cy + ww / 4} x2={cx + depth / 2} y2={cy + ww / 4}
-          stroke={C.winFrame} strokeWidth="0.5" />
-      </g>
-    );
-  }
+  return horiz ? (
+    <g>
+      <rect x={cx - ww / 2} y={cy - h / 2} width={ww} height={h} fill={C.winFill} />
+      <line x1={cx - ww / 2} y1={cy - h / 2} x2={cx + ww / 2} y2={cy - h / 2}
+        stroke={C.winLine} strokeWidth="1.5" />
+      <line x1={cx - ww / 2} y1={cy} x2={cx + ww / 2} y2={cy}
+        stroke={C.winLine} strokeWidth="0.8" />
+      <line x1={cx - ww / 2} y1={cy + h / 2} x2={cx + ww / 2} y2={cy + h / 2}
+        stroke={C.winLine} strokeWidth="1.5" />
+      <line x1={cx - ww / 2} y1={cy - h / 2} x2={cx - ww / 2} y2={cy + h / 2}
+        stroke={C.winLine} strokeWidth="1.2" />
+      <line x1={cx + ww / 2} y1={cy - h / 2} x2={cx + ww / 2} y2={cy + h / 2}
+        stroke={C.winLine} strokeWidth="1.2" />
+    </g>
+  ) : (
+    <g>
+      <rect x={cx - h / 2} y={cy - ww / 2} width={h} height={ww} fill={C.winFill} />
+      <line x1={cx - h / 2} y1={cy - ww / 2} x2={cx - h / 2} y2={cy + ww / 2}
+        stroke={C.winLine} strokeWidth="1.5" />
+      <line x1={cx} y1={cy - ww / 2} x2={cx} y2={cy + ww / 2}
+        stroke={C.winLine} strokeWidth="0.8" />
+      <line x1={cx + h / 2} y1={cy - ww / 2} x2={cx + h / 2} y2={cy + ww / 2}
+        stroke={C.winLine} strokeWidth="1.5" />
+      <line x1={cx - h / 2} y1={cy - ww / 2} x2={cx + h / 2} y2={cy - ww / 2}
+        stroke={C.winLine} strokeWidth="1.2" />
+      <line x1={cx - h / 2} y1={cy + ww / 2} x2={cx + h / 2} y2={cy + ww / 2}
+        stroke={C.winLine} strokeWidth="1.2" />
+    </g>
+  );
 }
 
 function StairSymbol({ stair, ox, oy }: { stair: Stair; ox: number; oy: number }) {
@@ -293,71 +239,45 @@ function StairSymbol({ stair, ox, oy }: { stair: Stair; ox: number; oy: number }
   const y  = oy + px(stair.y);
   const rw = px(stair.width);
   const rh = px(stair.depth);
-  const n  = Math.min(stair.steps, 14);
-  const isW = stair.width > stair.depth;
-  const treads = Array.from({ length: n });
+  const n  = Math.min(stair.steps, 18);
+  const wide = stair.width >= stair.depth;
 
   return (
     <g>
-      {treads.map((_, i) => {
-        if (isW) {
-          const tw = rw / n;
-          return (
-            <rect key={i}
-              x={x + i * tw} y={y}
-              width={tw} height={rh}
-              fill={i % 2 === 0 ? C.stairFill : C.stairAlt}
-              stroke={C.stairLine} strokeWidth="0.6"
-            />
-          );
-        } else {
-          const th = rh / n;
-          return (
-            <rect key={i}
-              x={x} y={y + i * th}
-              width={rw} height={th}
-              fill={i % 2 === 0 ? C.stairFill : C.stairAlt}
-              stroke={C.stairLine} strokeWidth="0.6"
-            />
-          );
-        }
-      })}
-      {/* Arrow */}
+      {Array.from({ length: n }).map((_, i) =>
+        wide ? (
+          <rect key={i}
+            x={x + (i * rw) / n} y={y}
+            width={rw / n} height={rh}
+            fill={i % 2 === 0 ? C.stairFill : C.stairAlt}
+            stroke={C.stairLine} strokeWidth="0.5"
+          />
+        ) : (
+          <rect key={i}
+            x={x} y={y + (i * rh) / n}
+            width={rw} height={rh / n}
+            fill={i % 2 === 0 ? C.stairFill : C.stairAlt}
+            stroke={C.stairLine} strokeWidth="0.5"
+          />
+        )
+      )}
+      <rect x={x} y={y} width={rw} height={rh}
+        fill="none" stroke={C.stairLine} strokeWidth="1" />
+      {/* Arrow line */}
+      {wide ? (
+        <line x1={x + 8} y1={y + rh / 2} x2={x + rw - 8} y2={y + rh / 2}
+          stroke={C.stairLine} strokeWidth="1" markerEnd="url(#arrowhead)" />
+      ) : (
+        <line x1={x + rw / 2} y1={y + 8} x2={x + rw / 2} y2={y + rh - 8}
+          stroke={C.stairLine} strokeWidth="1" markerEnd="url(#arrowhead)" />
+      )}
       <text
-        x={x + rw / 2} y={y + rh / 2 + 4}
-        textAnchor="middle"
-        fontFamily="'Courier New', monospace"
-        fontSize="9"
-        fill={C.stairLine}
-        fontWeight="700"
-      >
-        {stair.fromFloor === 0 ? "▲ UP" : "▼ DN"}
+        x={x + rw / 2} y={y + rh / 2 + (wide ? -8 : 4)}
+        textAnchor="middle" fontSize="7.5"
+        fontFamily="Arial, Helvetica, sans-serif" fontWeight="700"
+        fill={C.stairLine} letterSpacing="0.06em">
+        {stair.fromFloor === 0 ? "UP" : "DN"}
       </text>
-    </g>
-  );
-}
-
-function ParkingSymbol({ room, ox, oy }: { room: Room; ox: number; oy: number }) {
-  const x  = ox + px(room.x);
-  const y  = oy + px(room.y);
-  const rw = px(room.width);
-  const rh = px(room.depth);
-  const m  = 8;
-  const bw = Math.min(px(1.8), rw - m * 2);
-  const bh = Math.min(px(4.2), rh - m * 2);
-  const bx = x + (rw - bw) / 2;
-  const by = y + (rh - bh) / 2;
-  return (
-    <g>
-      <rect x={bx} y={by} width={bw} height={bh} rx="4"
-        fill={C.parking} stroke={C.stairLine} strokeWidth="0.8" />
-      <line x1={bx + bw * 0.25} y1={by + 3} x2={bx + bw * 0.25} y2={by + bh - 3}
-        stroke={C.stairLine} strokeWidth="0.5" strokeDasharray="3 3" />
-      <line x1={bx + bw * 0.75} y1={by + 3} x2={bx + bw * 0.75} y2={by + bh - 3}
-        stroke={C.stairLine} strokeWidth="0.5" strokeDasharray="3 3" />
-      <text x={x + rw / 2} y={y + rh - m}
-        textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="10" fill={C.stairLine} fontWeight="700">P</text>
     </g>
   );
 }
@@ -367,365 +287,402 @@ function BalconyHatch({ room, ox, oy }: { room: Room; ox: number; oy: number }) 
   const y  = oy + px(room.y);
   const rw = px(room.width);
   const rh = px(room.depth);
-  const sp = 10;
+  const sp = 11;
   const lines = [];
-  for (let d = -rh; d < rw; d += sp) {
-    const x1 = Math.max(0, d);
-    const y1 = Math.max(0, -d);
-    const x2 = Math.min(rw, d + rh);
-    const y2 = Math.min(rh, -d + rw);
-    lines.push(<line key={d}
-      x1={x + x1} y1={y + y1} x2={x + x2} y2={y + y2}
-      stroke="rgba(80,140,60,0.18)" strokeWidth="0.8"
-    />);
+  for (let d = 0; d < rw + rh; d += sp) {
+    lines.push(
+      <line key={d}
+        x1={x + Math.min(d, rw)} y1={y + Math.max(0, d - rw)}
+        x2={x + Math.max(0, d - rh)} y2={y + Math.min(d, rh)}
+        stroke={C.hatch} strokeWidth="0.9"
+      />
+    );
   }
-  return <g clipPath={`url(#clip-${room.id})`}>{lines}</g>;
+  return <g clipPath={`url(#bclip-${room.id})`}>{lines}</g>;
 }
 
-function NorthCompass({ x, y }: { x: number; y: number }) {
-  const r = COMPASS_R;
-  return (
-    <g transform={`translate(${x},${y})`}>
-      <circle r={r + 6} fill="rgba(30,26,20,0.88)" stroke={C.border} strokeWidth="1" />
-      <circle r={r + 3} fill="none" stroke={C.compass} strokeWidth="0.4" />
-      {/* N arrow (filled red) */}
-      <polygon points={`0,${-r} 6,2 0,-4 -6,2`} fill={C.compassN} stroke={C.compassN} strokeWidth="0.3" />
-      {/* S arrow (dark) */}
-      <polygon points={`0,${r} 6,-2 0,4 -6,-2`} fill={C.compass} stroke={C.compass} strokeWidth="0.3" />
-      {/* E/W ticks */}
-      <line x1={-r + 4} y1="0" x2={r - 4} y2="0" stroke={C.compass} strokeWidth="0.5" />
-      <line x1="0" y1={-r + 4} x2="0" y2={r - 4} stroke={C.compass} strokeWidth="0.5" />
-      {/* Cardinal labels */}
-      <text x="0" y={-r - 8} textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="11" fontWeight="800" fill={C.compassN}>N</text>
-      <text x="0" y={r + 14} textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="9" fill={C.compass}>S</text>
-      <text x={r + 9} y="3" textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="9" fill={C.compass}>E</text>
-      <text x={-r - 9} y="3" textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="9" fill={C.compass}>W</text>
-    </g>
-  );
-}
+function RoomLabel({ room, ox, oy }: { room: Room; ox: number; oy: number }) {
+  const cx    = ox + px(room.x) + px(room.width) / 2;
+  const cy    = oy + px(room.y) + px(room.depth) / 2;
+  const label = ROOM_LABELS[room.type] ?? room.type.toUpperCase().replace(/_/g, " ");
+  const dims  = fmtDims(room.width, room.depth);
+  const area  = fmtSqft(room.area);
 
-function DimensionLines({ plotWidth, plotDepth, ox, oy }: {
-  plotWidth: number; plotDepth: number; ox: number; oy: number;
-}) {
-  const pw  = px(plotWidth);
-  const pd  = px(plotDepth);
-  const off = DIM_OFFSET;
-  const tk  = DIM_TICK;
+  const roomPx   = px(room.width);
+  const roomPxH  = px(room.depth);
+  const nameSize = Math.min(10, (roomPx * 0.82) / (label.length * 0.58));
+  const subSize  = Math.min(8, (roomPx * 0.78) / (dims.length * 0.55));
+  const showSub  = subSize >= 5.5 && roomPxH >= 28;
 
-  return (
-    <g stroke={C.dimLine} fill="none">
-      {/* Top: width */}
-      <line x1={ox} y1={oy - off} x2={ox + pw} y2={oy - off} strokeWidth="0.9" />
-      <line x1={ox} y1={oy - off - tk} x2={ox} y2={oy - off + tk} strokeWidth="0.9" />
-      <line x1={ox + pw} y1={oy - off - tk} x2={ox + pw} y2={oy - off + tk} strokeWidth="0.9" />
-      <text x={ox + pw / 2} y={oy - off - 5}
-        textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="10" fontWeight="700" fill={C.dimText}>
-        {fmtFt(plotWidth)}
-      </text>
+  if (nameSize < 4.5 || roomPxH < 18) return null;
 
-      {/* Bottom: width */}
-      <line x1={ox} y1={oy + pd + off} x2={ox + pw} y2={oy + pd + off} strokeWidth="0.9" />
-      <line x1={ox} y1={oy + pd + off - tk} x2={ox} y2={oy + pd + off + tk} strokeWidth="0.9" />
-      <line x1={ox + pw} y1={oy + pd + off - tk} x2={ox + pw} y2={oy + pd + off + tk} strokeWidth="0.9" />
-      <text x={ox + pw / 2} y={oy + pd + off + 14}
-        textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="10" fontWeight="700" fill={C.dimText}>
-        {fmtFt(plotWidth)}
-      </text>
+  const lineH = showSub ? nameSize * 1.3 : 0;
+  const totalH = nameSize + (showSub ? lineH + subSize * 2.4 : 0);
+  const startY = cy - totalH / 2 + nameSize;
 
-      {/* Left: depth */}
-      <line x1={ox - off} y1={oy} x2={ox - off} y2={oy + pd} strokeWidth="0.9" />
-      <line x1={ox - off - tk} y1={oy} x2={ox - off + tk} y2={oy} strokeWidth="0.9" />
-      <line x1={ox - off - tk} y1={oy + pd} x2={ox - off + tk} y2={oy + pd} strokeWidth="0.9" />
-      <text
-        x={0} y={0}
-        transform={`translate(${ox - off - 14},${oy + pd / 2}) rotate(-90)`}
-        textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="10" fontWeight="700" fill={C.dimText}>
-        {fmtFt(plotDepth)}
-      </text>
-
-      {/* Right: depth */}
-      <line x1={ox + pw + off} y1={oy} x2={ox + pw + off} y2={oy + pd} strokeWidth="0.9" />
-      <line x1={ox + pw + off - tk} y1={oy} x2={ox + pw + off + tk} y2={oy} strokeWidth="0.9" />
-      <line x1={ox + pw + off - tk} y1={oy + pd} x2={ox + pw + off + tk} y2={oy + pd} strokeWidth="0.9" />
-      <text
-        x={0} y={0}
-        transform={`translate(${ox + pw + off + 16},${oy + pd / 2}) rotate(90)`}
-        textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="10" fontWeight="700" fill={C.dimText}>
-        {fmtFt(plotDepth)}
-      </text>
-    </g>
-  );
-}
-
-function SetbackLayer({ plotWidth, plotDepth, facing, ox, oy }: {
-  plotWidth: number; plotDepth: number; facing: FacingDirection; ox: number; oy: number;
-}) {
-  const pw   = px(plotWidth);
-  const pd   = px(plotDepth);
-  const front = px(1.5);
-  const side  = px(0.9);
-  const back  = px(0.6);
-
-  // Front strip based on facing
-  const strips: Array<{ x: number; y: number; w: number; h: number }> = [];
-  if (facing === "N") strips.push({ x: 0,           y: 0,        w: pw,  h: front });
-  if (facing === "S") strips.push({ x: 0,           y: pd-front, w: pw,  h: front });
-  if (facing === "E") strips.push({ x: pw-front,    y: 0,        w: front, h: pd  });
-  if (facing === "W") strips.push({ x: 0,           y: 0,        w: front, h: pd  });
-  // Side strips
-  strips.push({ x: 0, y: 0, w: side, h: pd });
-  strips.push({ x: pw-side, y: 0, w: side, h: pd });
-  // Back strip
-  if (facing === "N") strips.push({ x: 0, y: pd-back, w: pw, h: back });
-  if (facing === "S") strips.push({ x: 0, y: 0,       w: pw, h: back });
-  if (facing === "E") strips.push({ x: 0, y: 0,       w: back, h: pd });
-  if (facing === "W") strips.push({ x: pw-back, y: 0, w: back, h: pd });
-
-  return (
-    <g opacity="0.7">
-      {strips.map((s, i) => (
-        <rect key={i}
-          x={ox + s.x} y={oy + s.y} width={s.w} height={s.h}
-          fill={C.setbackFill} stroke={C.setback}
-          strokeWidth="0.6" strokeDasharray="5 4"
-        />
-      ))}
-    </g>
-  );
-}
-
-function ScaleBar({ x, y, scale }: { x: number; y: number; scale: number }) {
-  // Show a 5-metre scale bar
-  const barM  = 5;
-  const barPx = barM * scale;
-  const ticks = [0, 1, 2, 3, 4, 5];
-  return (
-    <g transform={`translate(${x},${y})`}>
-      <text x={0} y={-4} fontFamily="'Courier New', monospace" fontSize="7.5"
-        fill={C.scaleBar} letterSpacing="0.05em">SCALE 1:{Math.round(1000 / scale * 25.4 / 25.4)}</text>
-      {ticks.map((t, i) => (
-        <rect key={t}
-          x={t * (barPx / barM)} y={0}
-          width={barPx / barM} height={6}
-          fill={i % 2 === 0 ? C.scaleBar : "white"}
-          stroke={C.scaleBar} strokeWidth="0.5"
-        />
-      ))}
-      <text x={0} y={16} fontFamily="'Courier New', monospace" fontSize="7" fill={C.scaleBar}>0</text>
-      <text x={barPx / 2} y={16} textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="7" fill={C.scaleBar}>{fmtFt(barM / 2)}</text>
-      <text x={barPx} y={16} textAnchor="middle" fontFamily="'Courier New', monospace"
-        fontSize="7" fill={C.scaleBar}>{fmtFt(barM)}</text>
-    </g>
-  );
-}
-
-function TitleBlock({ width, plotWidth, plotDepth, floor, floors, title }: {
-  width: number; plotWidth: number; plotDepth: number;
-  floor: number; floors: number; title: string;
-}) {
-  const pw = Math.round(plotWidth * M_TO_FT);
-  const pd = Math.round(plotDepth * M_TO_FT);
   return (
     <g>
-      <rect x={0} y={0} width={width} height={TITLE_H}
-        fill={C.titleBg} stroke={C.titleBorder} strokeWidth="1" />
-      <line x1={0} y1={TITLE_H} x2={width} y2={TITLE_H} stroke={C.titleBorder} strokeWidth="1.5" />
-
-      {/* Logo / App name */}
-      <text x={18} y={24}
-        fontFamily="'Courier New', monospace" fontSize="13" fontWeight="800"
-        letterSpacing="0.12em" fill={C.titleText}>FLOOR PLAN</text>
-
-      {/* Main title */}
-      <text x={18} y={42}
-        fontFamily="'Courier New', monospace" fontSize="10.5" fontWeight="600"
-        fill={C.titleText}>{title}</text>
-
-      {/* Floor indicator */}
-      <text x={18} y={60}
-        fontFamily="'Courier New', monospace" fontSize="9" fill={C.titleSub}
-        letterSpacing="0.08em">{floorName(floor)} — Floor {floor + 1} of {floors}</text>
-
-      {/* Right block: dimensions */}
-      <line x1={width - 180} y1={8} x2={width - 180} y2={TITLE_H - 8}
-        stroke={C.titleBorder} strokeWidth="0.8" />
-
-      <text x={width - 170} y={22}
-        fontFamily="'Courier New', monospace" fontSize="8" fill={C.titleSub}
-        letterSpacing="0.06em">PLOT SIZE</text>
-      <text x={width - 170} y={36}
-        fontFamily="'Courier New', monospace" fontSize="11" fontWeight="700"
-        fill={C.titleText}>{pw}′ × {pd}′</text>
-      <text x={width - 170} y={50}
-        fontFamily="'Courier New', monospace" fontSize="8.5" fill={C.titleSub}>
-        ({plotWidth.toFixed(1)}m × {plotDepth.toFixed(1)}m)
+      <text x={cx} y={startY}
+        textAnchor="middle"
+        fontFamily="Arial, Helvetica, sans-serif"
+        fontSize={nameSize} fontWeight="700"
+        letterSpacing="0.04em" fill={C.label}>
+        {label}
       </text>
-      <text x={width - 170} y={63}
-        fontFamily="'Courier New', monospace" fontSize="7.5" fill={C.titleSub}>
-        {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-      </text>
+      {showSub && (
+        <>
+          <text x={cx} y={startY + lineH}
+            textAnchor="middle"
+            fontFamily="Arial, Helvetica, sans-serif"
+            fontSize={subSize} fill={C.labelSub} letterSpacing="0.02em">
+            {dims}
+          </text>
+          <text x={cx} y={startY + lineH + subSize * 1.55}
+            textAnchor="middle"
+            fontFamily="Arial, Helvetica, sans-serif"
+            fontSize={subSize} fill={C.labelSub} letterSpacing="0.02em">
+            {area}
+          </text>
+        </>
+      )}
     </g>
   );
+}
+
+function DimensionLines({ pw, pd, ox, oy }: {
+  pw: number; pd: number; ox: number; oy: number;
+}) {
+  const off  = DIM_GAP;
+  const t    = TICK;
+
+  const tick45 = (x: number, y: number, key: string) => (
+    <line key={key}
+      x1={x - t} y1={y + t} x2={x + t} y2={y - t}
+      stroke={C.dimLine} strokeWidth="1.3"
+    />
+  );
+
+  const extProps = {
+    stroke: C.dimLine, strokeWidth: "0.5" as const,
+    strokeDasharray: "3.5 3" as const,
+  };
+  const mainProps = { stroke: C.dimLine, strokeWidth: "0.9" as const };
+  const tProps = {
+    fontFamily: "Arial, Helvetica, sans-serif",
+    fontSize: "9.5" as const, fontWeight: "600" as const,
+    fill: C.dimText, letterSpacing: "0.04em" as const,
+  };
+
+  return (
+    <g fill="none">
+      {/* Extension lines */}
+      <line x1={ox}      y1={oy}       x2={ox}      y2={oy - off}      {...extProps} />
+      <line x1={ox + pw} y1={oy}       x2={ox + pw} y2={oy - off}      {...extProps} />
+      <line x1={ox}      y1={oy + pd}  x2={ox}      y2={oy + pd + off} {...extProps} />
+      <line x1={ox + pw} y1={oy + pd}  x2={ox + pw} y2={oy + pd + off} {...extProps} />
+      <line x1={ox}      y1={oy}       x2={ox - off}      y2={oy}      {...extProps} />
+      <line x1={ox}      y1={oy + pd}  x2={ox - off}      y2={oy + pd} {...extProps} />
+      <line x1={ox + pw} y1={oy}       x2={ox + pw + off} y2={oy}      {...extProps} />
+      <line x1={ox + pw} y1={oy + pd}  x2={ox + pw + off} y2={oy + pd} {...extProps} />
+
+      {/* Dimension lines */}
+      <line x1={ox} y1={oy - off} x2={ox + pw} y2={oy - off} {...mainProps} />
+      <line x1={ox} y1={oy + pd + off} x2={ox + pw} y2={oy + pd + off} {...mainProps} />
+      <line x1={ox - off} y1={oy} x2={ox - off} y2={oy + pd} {...mainProps} />
+      <line x1={ox + pw + off} y1={oy} x2={ox + pw + off} y2={oy + pd} {...mainProps} />
+
+      {/* Tick marks */}
+      {tick45(ox,      oy - off,      "t1")}
+      {tick45(ox + pw, oy - off,      "t2")}
+      {tick45(ox,      oy + pd + off, "t3")}
+      {tick45(ox + pw, oy + pd + off, "t4")}
+      {tick45(ox - off, oy,           "t5")}
+      {tick45(ox - off, oy + pd,      "t6")}
+      {tick45(ox + pw + off, oy,      "t7")}
+      {tick45(ox + pw + off, oy + pd, "t8")}
+
+      {/* Top width */}
+      <text x={ox + pw / 2} y={oy - off - 7} textAnchor="middle" {...tProps}>
+        {fmtFt(pw / S)}
+      </text>
+      {/* Bottom width */}
+      <text x={ox + pw / 2} y={oy + pd + off + 16} textAnchor="middle" {...tProps}>
+        {fmtFt(pw / S)}
+      </text>
+      {/* Left depth */}
+      <text x={0} y={0}
+        transform={`translate(${ox - off - 8},${oy + pd / 2}) rotate(-90)`}
+        textAnchor="middle" {...tProps}>{fmtFt(pd / S)}</text>
+      {/* Right depth */}
+      <text x={0} y={0}
+        transform={`translate(${ox + pw + off + 8},${oy + pd / 2}) rotate(90)`}
+        textAnchor="middle" {...tProps}>{fmtFt(pd / S)}</text>
+    </g>
+  );
+}
+
+function NorthArrow({ x, y }: { x: number; y: number }) {
+  const R = 24, aw = 8, ah = 36;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <circle r={R + 4} fill="white" stroke={C.border} strokeWidth="1.2" />
+      <polygon points={`0,${-ah / 2} ${aw},${ah * 0.15} 0,0 -${aw},${ah * 0.15}`}
+        fill={C.compassRed} />
+      <polygon points={`0,${ah / 2} ${aw},${-ah * 0.15} 0,0 -${aw},${-ah * 0.15}`}
+        fill="#CCCCCC" stroke="#888888" strokeWidth="0.5" />
+      <text x="0" y={-ah / 2 - 8} textAnchor="middle"
+        fontFamily="Arial, Helvetica, sans-serif" fontSize="11" fontWeight="800"
+        fill={C.border}>N</text>
+    </g>
+  );
+}
+
+function ScaleBar({ x, y }: { x: number; y: number }) {
+  const barM  = 5;
+  const barPx = barM * S;
+  const segs  = 5;
+  const segW  = barPx / segs;
+  const ratio = Math.round(1 / (S / 1000) * 25.4);
+
+  return (
+    <g transform={`translate(${x},${y})`} fontFamily="Arial, Helvetica, sans-serif">
+      <text x={0} y={-5} fontSize="7.5" fontWeight="600" fill={C.scaleBar}
+        letterSpacing="0.06em">SCALE  1 : {ratio}</text>
+      {Array.from({ length: segs }).map((_, i) => (
+        <rect key={i}
+          x={i * segW} y={0} width={segW} height={6}
+          fill={i % 2 === 0 ? C.scaleBar : "white"}
+          stroke={C.scaleBar} strokeWidth="0.6"
+        />
+      ))}
+      <text x={0} y={17} textAnchor="middle" fontSize="7" fill={C.scaleBar}>0</text>
+      <text x={barPx / 2} y={17} textAnchor="middle" fontSize="7" fill={C.scaleBar}>
+        {fmtFt(barM / 2)}
+      </text>
+      <text x={barPx} y={17} textAnchor="middle" fontSize="7" fill={C.scaleBar}>
+        {fmtFt(barM)}
+      </text>
+      <text x={barPx + 5} y={7} fontSize="6.5" fill={C.titleSub}>{barM}m</text>
+    </g>
+  );
+}
+
+const C_titleSub = "#666666";
+
+function TitleBlock({ svgW, plotWidth, plotDepth, floor, numFloors, bedrooms, bathrooms }: {
+  svgW: number; plotWidth: number; plotDepth: number;
+  floor: number; numFloors: number; bedrooms: number; bathrooms: number;
+}) {
+  const pw   = Math.round(plotWidth * M_TO_FT);
+  const pd   = Math.round(plotDepth * M_TO_FT);
+  const pa   = Math.round(plotWidth * plotDepth * M2_TO_SQFT);
+  const date = new Date().toLocaleDateString("en-US",
+    { month: "short", day: "2-digit", year: "numeric" });
+
+  const c1 = svgW * 0.43;
+  const c2 = svgW * 0.31;
+  const lp = 16, tp = 12;
+
+  return (
+    <g fontFamily="Arial, Helvetica, sans-serif">
+      <rect x={0} y={0} width={svgW} height={TITLE_H} fill={C.titleBg} />
+      <line x1={0} y1={0} x2={svgW} y2={0} stroke={C.titleLine} strokeWidth="2.5" />
+      <line x1={0} y1={TITLE_H} x2={svgW} y2={TITLE_H} stroke={C.titleLine} strokeWidth="1.5" />
+      <line x1={c1} y1={4} x2={c1} y2={TITLE_H - 4} stroke={C.titleLine} strokeWidth="0.7" />
+      <line x1={c1 + c2} y1={4} x2={c1 + c2} y2={TITLE_H - 4} stroke={C.titleLine} strokeWidth="0.7" />
+
+      {/* Col 1: Floor name */}
+      <text x={lp} y={tp + 11} fontSize="7" fontWeight="600"
+        fill={C_titleSub} letterSpacing="0.12em">ARCHITECTURAL FLOOR PLAN</text>
+      <text x={lp} y={tp + 32} fontSize="15" fontWeight="700"
+        fill={C.titleText} letterSpacing="0.04em">{floorName(floor)}</text>
+      <text x={lp} y={tp + 50} fontSize="8.5" fill={C_titleSub}>
+        {bedrooms} Bedrooms · {bathrooms} Bathrooms · Floor {floor + 1} of {numFloors}
+      </text>
+      <line x1={lp} y1={tp + 56} x2={c1 - lp} y2={tp + 56}
+        stroke={C.titleLine} strokeWidth="0.4" />
+      <text x={lp} y={tp + 68} fontSize="7.5" fill={C_titleSub}>
+        Date: {date}
+      </text>
+
+      {/* Col 2: Plot dimensions */}
+      <text x={c1 + lp} y={tp + 11} fontSize="7" fontWeight="600"
+        fill={C_titleSub} letterSpacing="0.12em">PLOT DIMENSIONS</text>
+      <text x={c1 + lp} y={tp + 34} fontSize="18" fontWeight="700" fill={C.titleText}>
+        {pw}′ × {pd}′
+      </text>
+      <text x={c1 + lp} y={tp + 52} fontSize="8.5" fill={C_titleSub}>
+        {plotWidth.toFixed(2)}m × {plotDepth.toFixed(2)}m
+      </text>
+      <text x={c1 + lp} y={tp + 68} fontSize="8.5" fill={C_titleSub}>
+        Plot area: {pa.toLocaleString()} sq ft
+      </text>
+
+      {/* Col 3: Drawing info */}
+      <text x={c1 + c2 + lp} y={tp + 11} fontSize="7" fontWeight="600"
+        fill={C_titleSub} letterSpacing="0.12em">DRAWING INFO</text>
+      <text x={c1 + c2 + lp} y={tp + 30} fontSize="9" fill={C_titleSub}>
+        Drawing Scale
+      </text>
+      <text x={c1 + c2 + lp} y={tp + 44} fontSize="12" fontWeight="700" fill={C.titleText}>
+        1 : {Math.round(1 / (S / 1000) * 25.4)}
+      </text>
+      <text x={c1 + c2 + lp} y={tp + 60} fontSize="8" fill={C_titleSub}>
+        Units: Feet / Sq Ft
+      </text>
+      <text x={c1 + c2 + lp} y={tp + 74} fontSize="7.5" fill={C_titleSub}
+        fontStyle="italic">For reference only</text>
+    </g>
+  );
+}
+
+// ─── Exported props interface ─────────────────────────────────────────────────
+export interface FloorPlanSVGProps {
+  layout:     LayoutOutput;
+  floor:      number;
+  plotWidth:  number;
+  plotDepth:  number;
+  facing:     FacingDirection;
+  bedrooms:   number;
+  bathrooms:  number;
 }
 
 // ─── Main SVG component ───────────────────────────────────────────────────────
+const FloorPlanSVG = forwardRef<SVGSVGElement, FloorPlanSVGProps>(
+  function FloorPlanSVG({ layout, floor, plotWidth, plotDepth, bedrooms, bathrooms }, ref) {
 
-export interface FloorPlanSVGProps {
-  layout: LayoutOutput;
-  floor: number;
-  plotWidth: number;
-  plotDepth: number;
-  facing: FacingDirection;
-  title?: string;
-}
+    const pw    = px(plotWidth);
+    const pd    = px(plotDepth);
+    const OX    = MARGIN;
+    const OY    = TITLE_H + MARGIN;
+    const svgW  = MARGIN + pw + MARGIN;
+    const svgH  = TITLE_H + MARGIN + pd + MARGIN;
 
-const FloorPlanSVG = forwardRef<SVGSVGElement, FloorPlanSVGProps>(function FloorPlanSVG(
-  { layout, floor, plotWidth, plotDepth, facing, title = "ARCHITECTURAL FLOOR PLAN" },
-  ref,
-) {
-  const scale = BASE_SCALE;
-  const pw    = px(plotWidth);
-  const pd    = px(plotDepth);
+    const rooms   = useMemo(() => layout.rooms.filter(r => r.floor === floor),   [layout, floor]);
+    const walls   = useMemo(() => layout.walls.filter(w => w.floor === floor),   [layout, floor]);
+    const doors   = useMemo(() => layout.doors.filter(d => d.floor === floor),   [layout, floor]);
+    const windows = useMemo(() => layout.windows.filter(w => w.floor === floor), [layout, floor]);
+    const stairs  = useMemo(() => layout.stairs.filter(s => s.fromFloor === floor), [layout, floor]);
 
-  // SVG canvas dimensions
-  const OX     = MARGIN;
-  const OY     = TITLE_H + MARGIN;
-  const svgW   = MARGIN + pw + MARGIN;
-  const svgH   = TITLE_H + MARGIN + pd + MARGIN;
+    const wallById = useMemo(() => {
+      const m = new Map<string, Wall>();
+      walls.forEach(w => m.set(w.id, w));
+      return m;
+    }, [walls]);
 
-  const rooms   = useMemo(() => layout.rooms.filter(r => r.floor === floor), [layout, floor]);
-  const walls   = useMemo(() => layout.walls.filter(w => w.floor === floor), [layout, floor]);
-  const doors   = useMemo(() => layout.doors.filter(d => d.floor === floor), [layout, floor]);
-  const windows = useMemo(() => layout.windows.filter(w => w.floor === floor), [layout, floor]);
-  const stairs  = useMemo(() => layout.stairs.filter(s => s.fromFloor === floor), [layout, floor]);
-  const wallMap = useMemo(() => new Map(walls.map(w => [w.id, w])), [walls]);
+    const numFloors    = Math.max(...layout.rooms.map(r => r.floor)) + 1;
+    const openRooms    = rooms.filter(r => r.type === "balcony" || r.type === "terrace");
 
-  // Clip paths for balcony hatch
-  const balconies = rooms.filter(r => r.type === "balcony");
+    return (
+      <svg
+        ref={ref}
+        width={svgW} height={svgH}
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ display: "block" }}
+      >
+        <defs>
+          <marker id="arrowhead" markerWidth="6" markerHeight="6"
+            refX="5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={C.stairLine} />
+          </marker>
+          {openRooms.map(r => (
+            <clipPath key={r.id} id={`bclip-${r.id}`}>
+              <rect
+                x={OX + px(r.x)} y={OY + px(r.y)}
+                width={px(r.width)} height={px(r.depth)}
+              />
+            </clipPath>
+          ))}
+        </defs>
 
-  const compassX = OX + pw + MARGIN - COMPASS_R - 10;
-  const compassY = OY + pd + MARGIN - COMPASS_R - 12;
+        {/* ① Paper */}
+        <rect x={0} y={0} width={svgW} height={svgH} fill={C.paper} />
 
-  return (
-    <svg
-      ref={ref}
-      width={svgW}
-      height={svgH}
-      viewBox={`0 0 ${svgW} ${svgH}`}
-      xmlns="http://www.w3.org/2000/svg"
-      fontFamily="'Courier New', Courier, monospace"
-      style={{ display: "block" }}
-    >
-      {/* Clip paths */}
-      <defs>
-        {balconies.map(r => (
-          <clipPath key={r.id} id={`clip-${r.id}`}>
-            <rect x={OX + px(r.x)} y={OY + px(r.y)} width={px(r.width)} height={px(r.depth)} />
-          </clipPath>
+        {/* ② Title block */}
+        <TitleBlock
+          svgW={svgW} plotWidth={plotWidth} plotDepth={plotDepth}
+          floor={floor} numFloors={numFloors}
+          bedrooms={bedrooms} bathrooms={bathrooms}
+        />
+
+        {/* ③ Plot background */}
+        <rect x={OX} y={OY} width={pw} height={pd} fill={C.plotBg} />
+
+        {/* ④ Very faint metre grid */}
+        {Array.from({ length: Math.ceil(plotWidth) + 1 }).map((_, i) => (
+          <line key={`gx${i}`}
+            x1={OX + i * S} y1={OY} x2={OX + i * S} y2={OY + pd}
+            stroke="rgba(0,0,0,0.045)" strokeWidth="0.5" />
         ))}
-      </defs>
+        {Array.from({ length: Math.ceil(plotDepth) + 1 }).map((_, i) => (
+          <line key={`gy${i}`}
+            x1={OX} y1={OY + i * S} x2={OX + pw} y2={OY + i * S}
+            stroke="rgba(0,0,0,0.045)" strokeWidth="0.5" />
+        ))}
 
-      {/* Paper background */}
-      <rect x={0} y={0} width={svgW} height={svgH} fill={C.paper} />
+        {/* ⑤ Room fills */}
+        {rooms.map(r => (
+          <rect key={r.id}
+            x={OX + px(r.x)} y={OY + px(r.y)}
+            width={px(r.width)} height={px(r.depth)}
+            fill={ROOM_FILLS[r.type] ?? "#FAFAF8"}
+          />
+        ))}
 
-      {/* Outer border */}
-      <rect x={2} y={2} width={svgW - 4} height={svgH - 4}
-        fill="none" stroke={C.border} strokeWidth="1.5" />
+        {/* ⑥ Balcony / terrace hatch */}
+        {openRooms.map(r => (
+          <BalconyHatch key={`hatch-${r.id}`} room={r} ox={OX} oy={OY} />
+        ))}
 
-      {/* Title block */}
-      <TitleBlock
-        width={svgW}
-        plotWidth={plotWidth}
-        plotDepth={plotDepth}
-        floor={floor}
-        floors={layout.stairs.length > 0
-          ? Math.max(...layout.rooms.map(r => r.floor)) + 1
-          : 1}
-        title={title}
-      />
+        {/* ⑦ Plot outline */}
+        <rect x={OX} y={OY} width={pw} height={pd}
+          fill="none" stroke={C.border} strokeWidth="0.5" />
 
-      {/* Plot background */}
-      <rect x={OX} y={OY} width={pw} height={pd} fill={C.plotBg} />
+        {/* ⑧ Walls (solid filled rectangles) */}
+        {walls.map(w => (
+          <WallRect key={w.id} wall={w} doors={doors} windows={windows} ox={OX} oy={OY} />
+        ))}
 
-      {/* Subtle grid */}
-      {Array.from({ length: Math.ceil(plotWidth) + 1 }, (_, i) => (
-        <line key={`gv${i}`}
-          x1={OX + i * scale} y1={OY}
-          x2={OX + i * scale} y2={OY + pd}
-          stroke={C.gridLine} strokeWidth="0.5"
-        />
-      ))}
-      {Array.from({ length: Math.ceil(plotDepth) + 1 }, (_, i) => (
-        <line key={`gh${i}`}
-          x1={OX} y1={OY + i * scale}
-          x2={OX + pw} y2={OY + i * scale}
-          stroke={C.gridLine} strokeWidth="0.5"
-        />
-      ))}
+        {/* ⑨ Window symbols */}
+        {windows.map(w => (
+          <WindowSymbol key={w.id}
+            win={w} wall={wallById.get(w.wallId)} ox={OX} oy={OY} />
+        ))}
 
-      {/* Setback guidelines */}
-      <SetbackLayer
-        plotWidth={plotWidth} plotDepth={plotDepth}
-        facing={facing} ox={OX} oy={OY}
-      />
+        {/* ⑩ Door symbols */}
+        {doors.map(d => (
+          <DoorSymbol key={d.id}
+            door={d} wall={wallById.get(d.wallId)} ox={OX} oy={OY} />
+        ))}
 
-      {/* Room fills */}
-      {rooms.map(r => <RoomFill key={r.id} room={r} ox={OX} oy={OY} />)}
+        {/* ⑪ Stair symbols */}
+        {stairs.map(s => (
+          <StairSymbol key={s.id} stair={s} ox={OX} oy={OY} />
+        ))}
 
-      {/* Balcony hatch */}
-      {balconies.map(r => <BalconyHatch key={`h-${r.id}`} room={r} ox={OX} oy={OY} />)}
+        {/* ⑫ Room labels */}
+        {rooms.map(r => (
+          <RoomLabel key={`lbl-${r.id}`} room={r} ox={OX} oy={OY} />
+        ))}
 
-      {/* Parking symbol */}
-      {rooms.filter(r => r.type === "parking").map(r =>
-        <ParkingSymbol key={`p-${r.id}`} room={r} ox={OX} oy={OY} />
-      )}
+        {/* ⑬ Dimension lines */}
+        <DimensionLines pw={pw} pd={pd} ox={OX} oy={OY} />
 
-      {/* Stair symbols */}
-      {stairs.map(s => <StairSymbol key={s.id} stair={s} ox={OX} oy={OY} />)}
+        {/* ⑭ North arrow (top-right margin) */}
+        <NorthArrow x={OX + pw + MARGIN * 0.66} y={OY - MARGIN * 0.60} />
 
-      {/* Window symbols */}
-      {windows.map(w => (
-        <WindowSymbol key={w.id} win={w} wall={wallMap.get(w.wallId)} ox={OX} oy={OY} />
-      ))}
+        {/* ⑮ Scale bar (bottom margin) */}
+        <ScaleBar x={OX} y={OY + pd + DIM_GAP + 30} />
 
-      {/* Door symbols */}
-      {doors.map(d => (
-        <DoorSymbol key={d.id} door={d} wall={wallMap.get(d.wallId)} ox={OX} oy={OY} />
-      ))}
-
-      {/* Walls (drawn last so they appear on top of fills) */}
-      {walls.map(w => (
-        <WallLines key={w.id} wall={w} doors={doors} windows={windows} ox={OX} oy={OY} />
-      ))}
-
-      {/* Plot border */}
-      <rect x={OX} y={OY} width={pw} height={pd}
-        fill="none" stroke={C.extWall} strokeWidth={Math.max(3, px(0.23))} />
-
-      {/* Room labels */}
-      {rooms.map(r => <RoomLabel key={`lbl-${r.id}`} room={r} ox={OX} oy={OY} />)}
-
-      {/* Dimension lines */}
-      <DimensionLines
-        plotWidth={plotWidth} plotDepth={plotDepth} ox={OX} oy={OY}
-      />
-
-      {/* North compass */}
-      <NorthCompass x={compassX} y={compassY} />
-
-      {/* Scale bar */}
-      <ScaleBar x={OX} y={OY + pd + MARGIN - 22} scale={scale} />
-    </svg>
-  );
-});
+        {/* ⑯ Outer drawing border */}
+        <rect x={5} y={5} width={svgW - 10} height={svgH - 10}
+          fill="none" stroke={C.border} strokeWidth="1.8" />
+        <rect x={8} y={8} width={svgW - 16} height={svgH - 16}
+          fill="none" stroke={C.border} strokeWidth="0.4" />
+      </svg>
+    );
+  }
+);
 
 export default FloorPlanSVG;

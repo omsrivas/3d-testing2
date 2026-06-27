@@ -455,8 +455,7 @@ export default function HousePlannerPage() {
     }, 30);
   }, [input]);
 
-  // Auto-generate on first load
-  useEffect(() => { generate(); }, []);
+  // No auto-generate — user must click GENERATE PLAN
 
   // Zoom wheel handler (zoom toward cursor)
   const onWheel = useCallback((e: React.WheelEvent) => {
@@ -667,13 +666,34 @@ export default function HousePlannerPage() {
           onMouseLeave={onMouseUp}
         >
           {/* Empty state */}
-          {!layout && !generating && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-              <Building2 size={48} style={{ color: "rgba(200,150,80,0.30)" }} />
-              <p style={{ color: "rgba(200,180,140,0.50)", fontSize: 13,
-                fontFamily: "ui-monospace, monospace", letterSpacing: "0.10em" }}>
-                {errors.length > 0 ? "ERRORS — SEE SIDEBAR" : "CONFIGURE & GENERATE"}
-              </p>
+          {!layout && !generating && errors.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-5">
+              {/* Architectural frame hint */}
+              <svg width="160" height="120" viewBox="0 0 160 120" style={{ opacity: 0.18 }}>
+                <rect x="8" y="8" width="144" height="104" fill="none" stroke="#c8b880" strokeWidth="2" />
+                <rect x="12" y="12" width="136" height="96" fill="none" stroke="#c8b880" strokeWidth="0.6" />
+                <line x1="8" y1="28" x2="152" y2="28" stroke="#c8b880" strokeWidth="1" />
+                <rect x="24" y="40" width="48" height="52" fill="none" stroke="#c8b880" strokeWidth="1" />
+                <rect x="84" y="40" width="52" height="24" fill="none" stroke="#c8b880" strokeWidth="1" />
+                <rect x="84" y="72" width="52" height="20" fill="none" stroke="#c8b880" strokeWidth="1" />
+                <line x1="28" y1="30" x2="28" y2="8" stroke="#c8b880" strokeWidth="0.6" strokeDasharray="3 2" />
+                <line x1="132" y1="30" x2="132" y2="8" stroke="#c8b880" strokeWidth="0.6" strokeDasharray="3 2" />
+              </svg>
+              <div style={{ textAlign: "center" }}>
+                <p style={{
+                  color: "rgba(220,200,150,0.75)", fontSize: 13, fontWeight: 600,
+                  fontFamily: "'Courier New', monospace", letterSpacing: "0.10em",
+                  marginBottom: 6,
+                }}>
+                  READY TO DRAFT
+                </p>
+                <p style={{
+                  color: "rgba(180,160,120,0.55)", fontSize: 11,
+                  fontFamily: "'Courier New', monospace", letterSpacing: "0.06em",
+                }}>
+                  Enter plot dimensions and click GENERATE PLAN.
+                </p>
+              </div>
             </div>
           )}
 
@@ -720,7 +740,8 @@ export default function HousePlannerPage() {
                 plotWidth={input.plotWidth}
                 plotDepth={input.plotDepth}
                 facing={input.facingDirection}
-                title={`${mToFt(input.plotWidth)}′ × ${mToFt(input.plotDepth)}′ PLOT — ${input.bedrooms}BR/${input.bathrooms}BA`}
+                bedrooms={input.bedrooms}
+                bathrooms={input.bathrooms}
               />
             </div>
           )}
