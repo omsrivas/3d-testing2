@@ -1,36 +1,47 @@
-# [Project name]
+# House Floor Plan Generator
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A 2D architectural floor plan generator where users input plot dimensions, road facing direction, number of floors, and room requirements to generate SVG blueprints with optional Vastu compliance scoring.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `PORT=5000 pnpm --filter @workspace/house-planner run dev` — run the app (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required env: `DATABASE_URL` — Postgres connection string (auto-provisioned by Replit)
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
+- Frontend: React 19, Vite, Tailwind CSS v4, Radix UI, Wouter, Zustand, React Query
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
+- Validation: Zod, drizzle-zod
 - API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Build: esbuild
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/house-planner/` — main React frontend (Floor Plan Generator UI)
+- `artifacts/house-planner/src/lib/layoutEngine/` — core procedural layout engine (vastu, walls, stairs, rooms)
+- `artifacts/api-server/` — Express backend API
+- `lib/db/` — Drizzle ORM schema and DB client
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API)
+- `lib/api-client-react/` — generated React hooks
+- `lib/api-zod/` — generated Zod schemas
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The layout engine is entirely client-side and deterministic — no AI or external APIs required.
+- Vastu compliance is computed locally in `vastu.ts` based on room placement and cardinal direction.
+- The frontend runs on port 5000 (Replit webview requirement); `PORT=5000` must be passed to the dev command.
+- Database is provisioned via Replit's built-in PostgreSQL; `DATABASE_URL` is auto-set.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Users enter plot width/depth, road facing direction (N/E/S/W), number of floors (G, G+1, G+2), bedrooms/bathrooms count, and feature toggles (parking, staircase, balcony, Vastu). Clicking "Generate Plan" produces a zoomable SVG floor plan blueprint.
 
 ## User preferences
 
@@ -38,8 +49,10 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Always pass `PORT=5000` when running the house-planner dev server, as Replit's webview requires port 5000.
+- pnpm only — the preinstall script rejects npm and yarn.
+- The `@workspace/db` package requires `DATABASE_URL` to be set; Replit provisions this automatically.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
