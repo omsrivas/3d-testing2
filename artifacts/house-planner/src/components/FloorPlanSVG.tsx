@@ -7,12 +7,12 @@ import { RoomFurniture } from "./FurnitureSymbols";
 
 // ─── Drawing constants ────────────────────────────────────────────────────────
 export const BASE_SCALE = 45;   // px per metre
-const MARGIN    = 108;          // space around plot for dimension lines
+const MARGIN    = 116;          // space around plot for dimension lines
 const TITLE_H   = 88;           // title block height
-const DIM_GAP   = 44;           // offset of dimension line from plot edge
-const TICK      = 8;            // 45° tick arm length
-const EXT_T     = 16;           // exterior wall min thickness (px)
-const INT_T     = 10;           // interior wall min thickness (px)
+const DIM_GAP   = 48;           // offset of dimension line from plot edge
+const TICK      = 9;            // 45° tick arm length
+const EXT_T     = 22;           // exterior wall min thickness (px)
+const INT_T     = 13;           // interior wall min thickness (px)
 
 // ─── Unit helpers ─────────────────────────────────────────────────────────────
 const S          = BASE_SCALE;
@@ -49,26 +49,26 @@ const C = {
   hatch:      "rgba(60,110,60,0.22)",
 } as const;
 
-// Professional architectural room fills — warm, desaturated, marketing-quality
+// Professional architectural room fills — warm, rich, premium marketing-quality
 const ROOM_FILLS: Record<string, string> = {
-  living:         "#F2EDE3",
-  family_lounge:  "#EEF0E8",
-  dining:         "#EBF0E6",
-  kitchen:        "#FDF8E8",
-  master_bedroom: "#EDE8F5",
-  bedroom:        "#E8EEF8",
-  bathroom:       "#DFF0F8",
-  toilet:         "#DFF0F8",
-  balcony:        "#DFF0E5",
-  parking:        "#EAECEA",
-  staircase:      "#EDE9E2",
-  foyer:          "#F5F0E2",
-  pooja:          "#FBF2E0",
-  utility:        "#F0EEE8",
-  passage:        "#F5F3EE",
-  front_garden:   "#D8EDCE",
-  entrance_gate:  "#DDE4D4",
-  terrace:        "#E5EDE0",
+  living:         "#EDE6D3",   // warm cream
+  family_lounge:  "#EDE6D3",   // warm cream (same as living)
+  dining:         "#E6DDCA",   // slightly deeper cream
+  kitchen:        "#F2ECD8",   // warm light parchment
+  master_bedroom: "#F0D9BC",   // warm sandy peach (premium)
+  bedroom:        "#EDD8B8",   // sandy peach
+  bathroom:       "#C8DFED",   // sky blue
+  toilet:         "#C8DFED",   // sky blue
+  balcony:        "#D0E8CC",   // soft green terrace
+  parking:        "#D2CFC6",   // stone grey paving
+  staircase:      "#E2DDD2",   // warm neutral
+  foyer:          "#E5DDC8",   // warm entry
+  pooja:          "#F5EDD5",   // warm gold
+  utility:        "#E5E0D8",   // cool neutral
+  passage:        "#EAE5D8",   // warm passage
+  front_garden:   "#90C86A",   // bright grass green
+  entrance_gate:  "#C5BBAA",   // stone paving
+  terrace:        "#D8DDD2",   // light terrace
 };
 
 const ROOM_LABELS: Record<string, string> = {
@@ -429,17 +429,18 @@ function DimensionLines({ pw, pd, ox, oy }: {
 }
 
 function NorthArrow({ x, y }: { x: number; y: number }) {
-  const R = 24, aw = 8, ah = 36;
+  // Bold "NORTH" text + thick solid downward arrow (matches reference image style)
+  const aw = 14, ah = 30, sw = 5;
   return (
-    <g transform={`translate(${x},${y})`}>
-      <circle r={R + 4} fill="white" stroke={C.border} strokeWidth="1.2" />
-      <polygon points={`0,${-ah / 2} ${aw},${ah * 0.15} 0,0 -${aw},${ah * 0.15}`}
-        fill={C.compassRed} />
-      <polygon points={`0,${ah / 2} ${aw},${-ah * 0.15} 0,0 -${aw},${-ah * 0.15}`}
-        fill="#CCCCCC" stroke="#888888" strokeWidth="0.5" />
-      <text x="0" y={-ah / 2 - 8} textAnchor="middle"
-        fontFamily="Arial, Helvetica, sans-serif" fontSize="11" fontWeight="800"
-        fill={C.border}>N</text>
+    <g transform={`translate(${x},${y})`} fontFamily="Arial, Helvetica, sans-serif">
+      <text x="0" y={-ah * 0.5 - 6} textAnchor="middle"
+        fontSize="12" fontWeight="900" fill={C.border} letterSpacing="0.12em">NORTH</text>
+      {/* Shaft */}
+      <line x1="0" y1={-ah * 0.4} x2="0" y2={ah * 0.25}
+        stroke={C.border} strokeWidth={sw} strokeLinecap="round" />
+      {/* Arrowhead */}
+      <polygon points={`0,${ah * 0.58} ${aw * 0.5},${ah * 0.2} ${-aw * 0.5},${ah * 0.2}`}
+        fill={C.border} />
     </g>
   );
 }
@@ -647,12 +648,11 @@ const FloorPlanSVG = forwardRef<SVGSVGElement, FloorPlanSVGProps>(
           <RoomFurniture key={`furn-${r.id}`} room={r} ox={OX} oy={OY} />
         ))}
 
-        {/* ⑦ Exterior boundary wall (thick outer ring) */}
+        {/* ⑦ Exterior boundary wall — double-line architectural style */}
         <rect x={OX} y={OY} width={pw} height={pd}
-          fill="none" stroke={C.border} strokeWidth="3.5" />
-        {/* Inner boundary wall face */}
-        <rect x={OX + 3.5} y={OY + 3.5} width={pw - 7} height={pd - 7}
-          fill="none" stroke="rgba(0,0,0,0.12)" strokeWidth="1" />
+          fill="none" stroke={C.border} strokeWidth="5" />
+        <rect x={OX + 3} y={OY + 3} width={pw - 6} height={pd - 6}
+          fill="none" stroke={C.border} strokeWidth="1.2" opacity="0.35" />
 
         {/* ⑧ Walls (solid filled rectangles) */}
         {walls.map(w => (
@@ -684,8 +684,8 @@ const FloorPlanSVG = forwardRef<SVGSVGElement, FloorPlanSVGProps>(
         {/* ⑬ Dimension lines */}
         <DimensionLines pw={pw} pd={pd} ox={OX} oy={OY} />
 
-        {/* ⑭ North arrow (top-right margin) */}
-        <NorthArrow x={OX + pw + MARGIN * 0.66} y={OY - MARGIN * 0.60} />
+        {/* ⑭ North arrow — centred above the top plot edge, matching reference */}
+        <NorthArrow x={OX + pw / 2} y={OY - MARGIN * 0.48} />
 
         {/* ⑮ Scale bar (bottom margin) */}
         <ScaleBar x={OX} y={OY + pd + DIM_GAP + 30} />

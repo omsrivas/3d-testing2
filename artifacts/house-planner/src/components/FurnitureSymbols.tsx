@@ -11,27 +11,30 @@ const S  = 45;
 const m  = (v: number) => v * S;          // metres → px
 const cl = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-// ─── Palette ──────────────────────────────────────────────────────────────────
+// ─── Palette — richer, more opaque, premium architectural quality ──────────────
 const F = {
-  fur:   "rgba(200,185,155,0.30)",   // general furniture fill
-  furS:  "rgba(65,50,35,0.55)",      // furniture stroke
-  ward:  "rgba(175,158,130,0.38)",   // wardrobe
-  sofa:  "rgba(195,178,148,0.30)",   // sofa
-  tbl:   "rgba(215,200,168,0.25)",   // tables
-  bath:  "rgba(185,212,230,0.42)",   // bathroom fixtures
-  bathS: "rgba(30,80,115,0.60)",     // bathroom stroke
-  kit:   "rgba(200,186,150,0.32)",   // kitchen
-  plant: "rgba(125,175,80,0.42)",    // plants
-  plantS:"rgba(50,105,30,0.60)",
-  car:   "rgba(160,168,175,0.32)",   // car
-  carS:  "rgba(55,65,75,0.60)",
-  path:  "rgba(200,190,170,0.55)",   // paving
-  pathS: "rgba(150,135,110,0.70)",
-  gate:  "rgba(90,80,65,0.70)",
-  step:  "rgba(185,175,155,0.65)",
-  sw:    0.65,
-  hw:    0.5,
-  mw:    0.9,
+  fur:   "rgba(195,162,108,0.58)",   // warm tan furniture fill
+  furS:  "rgba(50,35,18,0.80)",      // dark stroke
+  ward:  "rgba(155,122,78,0.62)",    // wardrobe — medium brown
+  sofa:  "rgba(182,150,100,0.58)",   // sofa — warm tan
+  tbl:   "rgba(185,158,110,0.52)",   // tables — warm wood
+  bath:  "rgba(195,225,245,0.75)",   // bathroom fixtures — clear sky blue
+  bathS: "rgba(15,65,110,0.80)",     // bathroom stroke — deep blue
+  kit:   "rgba(185,168,130,0.58)",   // kitchen counter — warm
+  plant: "rgba(88,158,48,0.72)",     // plants — vivid green
+  plantS:"rgba(32,90,18,0.85)",      // plant stroke
+  shrub: "rgba(72,138,35,0.65)",     // boundary shrubs
+  shrubS:"rgba(28,78,15,0.80)",
+  car:   "rgba(242,244,248,0.96)",   // car body — near-white (sedan)
+  carW:  "rgba(30,38,50,0.78)",      // car window glass — dark
+  carS:  "rgba(38,48,60,0.88)",      // car outline
+  path:  "rgba(195,182,158,0.72)",   // paving slab fill
+  pathS: "rgba(140,125,100,0.82)",   // paving stroke
+  gate:  "rgba(68,55,38,0.85)",      // gate bars
+  step:  "rgba(180,168,148,0.80)",   // stepping stones
+  sw:    0.75,
+  hw:    0.55,
+  mw:    1.0,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -576,25 +579,46 @@ function ParkingFurniture({ room, ox, oy }: { room: Room; ox:number; oy:number }
   const ch   = landscape ? carW : carL;   // svg height
 
   return (
-    <g fill={F.car} stroke={F.carS} strokeWidth={F.sw}>
-      {/* Car body */}
-      <rect x={carX} y={carY} width={cw} height={ch} rx="5" />
-      {/* Windscreen */}
-      <rect x={carX + cw*0.1} y={carY + ch*0.06} width={cw*0.8} height={ch*0.18}
-        fill="rgba(160,190,215,0.30)" strokeWidth={F.hw} rx="2" />
-      {/* Rear window */}
-      <rect x={carX + cw*0.12} y={carY + ch*0.76} width={cw*0.76} height={ch*0.17}
-        fill="rgba(160,190,215,0.30)" strokeWidth={F.hw} rx="2" />
-      {/* Wheels - 4 corners */}
+    <g>
+      {/* Drop shadow */}
+      <rect x={carX + 3} y={carY + 3} width={cw} height={ch} rx="6"
+        fill="rgba(0,0,0,0.10)" />
+      {/* Car body — near-white sedan */}
+      <rect x={carX} y={carY} width={cw} height={ch} rx="6"
+        fill={F.car} stroke={F.carS} strokeWidth={F.sw} />
+      {/* Windscreen — dark tinted glass */}
+      <rect x={carX + cw*0.12} y={carY + ch*0.07} width={cw*0.76} height={ch*0.19}
+        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="3" />
+      {/* Rear window — dark tinted glass */}
+      <rect x={carX + cw*0.14} y={carY + ch*0.74} width={cw*0.72} height={ch*0.17}
+        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="3" />
+      {/* Side windows */}
+      <rect x={carX + cw*0.10} y={carY + ch*0.30} width={cw*0.22} height={ch*0.13}
+        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
+      <rect x={carX + cw*0.68} y={carY + ch*0.30} width={cw*0.22} height={ch*0.13}
+        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
+      <rect x={carX + cw*0.10} y={carY + ch*0.44} width={cw*0.22} height={ch*0.13}
+        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
+      <rect x={carX + cw*0.68} y={carY + ch*0.44} width={cw*0.22} height={ch*0.13}
+        fill={F.carW} stroke={F.carS} strokeWidth={F.hw} rx="1" />
+      {/* Roof panel centre */}
+      <rect x={carX + cw*0.15} y={carY + ch*0.30} width={cw*0.70} height={ch*0.38}
+        fill="rgba(220,222,228,0.50)" stroke="none" rx="1" />
+      {/* Wheels — 4 corners, dark with rim */}
       {([
-        [carX + cw*0.08, carY + ch*0.07],
-        [carX + cw*0.82, carY + ch*0.07],
-        [carX + cw*0.08, carY + ch*0.82],
-        [carX + cw*0.82, carY + ch*0.82],
+        [carX - cw*0.05, carY + ch*0.08],
+        [carX + cw*0.88, carY + ch*0.08],
+        [carX - cw*0.05, carY + ch*0.78],
+        [carX + cw*0.88, carY + ch*0.78],
       ] as [number,number][]).map(([wx, wy], i) => (
-        <ellipse key={i} cx={wx + cw*0.05} cy={wy + ch*0.045}
-          rx={cw*0.06} ry={ch*0.04}
-          fill="rgba(40,45,50,0.50)" stroke={F.carS} strokeWidth={F.hw} />
+        <g key={i}>
+          <ellipse cx={wx + cw*0.085} cy={wy + ch*0.065}
+            rx={cw*0.085} ry={ch*0.065}
+            fill="rgba(30,35,42,0.90)" />
+          <ellipse cx={wx + cw*0.085} cy={wy + ch*0.065}
+            rx={cw*0.048} ry={ch*0.038}
+            fill="rgba(140,145,155,0.70)" />
+        </g>
       ))}
     </g>
   );
@@ -602,28 +626,83 @@ function ParkingFurniture({ room, ox, oy }: { room: Room; ox:number; oy:number }
 
 // ─── FRONT GARDEN / EXTERIOR LANDSCAPING ────────────────────────────────────
 
+/** Dense shrub cluster — multiple overlapping circles for a bushy appearance */
+function ShrubCluster({ cx, cy, r }: { cx:number; cy:number; r:number }) {
+  const offsets: [number,number,number][] = [
+    [0, 0, r], [-r*0.55, -r*0.25, r*0.72], [r*0.55, -r*0.25, r*0.72],
+    [-r*0.4, r*0.45, r*0.65], [r*0.4, r*0.45, r*0.65],
+  ];
+  return (
+    <g>
+      {offsets.map(([dx, dy, cr], i) => (
+        <circle key={i} cx={cx+dx} cy={cy+dy} r={cr}
+          fill={F.shrub} stroke={F.shrubS} strokeWidth={0.4} opacity={0.85} />
+      ))}
+      <circle cx={cx} cy={cy} r={r*0.35} fill={F.shrubS} opacity={0.18} />
+    </g>
+  );
+}
+
 function FrontGardenElements({ room, ox, oy }: { room: Room; ox:number; oy:number }) {
   const rx = ox + m(room.x), ry = oy + m(room.y);
   const rw = m(room.width),  rh = m(room.depth);
 
-  const treeR = cl(m(0.55), m(0.35), Math.min(rw, rh) * 0.22);
+  // Stepping stone pathway — centre of room, running vertically
+  const pathW  = m(0.9);
+  const stoneW = m(0.5), stoneH = m(0.35);
+  const nStones = Math.max(2, Math.floor((rh - m(0.4)) / (stoneH + m(0.25))));
+  const pathX  = rx + (rw - pathW) / 2;
+  const pathStartY = ry + m(0.3);
 
-  // Place trees in corners / symmetrically
-  const trees: [number, number][] = [];
-  if (rw >= m(1.8) && rh >= m(1.0)) trees.push([rx + treeR + m(0.1), ry + treeR + m(0.1)]);
-  if (rw >= m(3.5)) trees.push([rx + rw - treeR - m(0.1), ry + treeR + m(0.1)]);
-  if (rh >= m(2.5) && rw >= m(1.8)) {
-    trees.push([rx + treeR + m(0.1), ry + rh - treeR - m(0.1)]);
-    if (rw >= m(3.5)) trees.push([rx + rw - treeR - m(0.1), ry + rh - treeR - m(0.1)]);
+  // Boundary shrubs — dense clusters along left and bottom edges
+  const shrubR = cl(m(0.42), m(0.28), Math.min(rw, rh) * 0.18);
+  const shrubs: [number, number][] = [];
+
+  // Left column of shrubs
+  if (rh >= m(1.2)) {
+    const nLeft = Math.max(1, Math.floor(rh / (shrubR * 2.2)));
+    for (let i = 0; i < nLeft; i++) {
+      shrubs.push([rx + shrubR * 0.7, ry + shrubR * 0.7 + i * (rh / nLeft)]);
+    }
   }
-  // Centre tree for large gardens
-  if (rw >= m(4.0) && rh >= m(3.0)) trees.push([rx + rw/2, ry + rh/2]);
+  // Bottom row of shrubs
+  if (rw >= m(2.0)) {
+    const nBottom = Math.max(1, Math.floor(rw / (shrubR * 2.2)));
+    for (let i = 0; i < nBottom; i++) {
+      shrubs.push([rx + shrubR * 0.7 + i * (rw / nBottom), ry + rh - shrubR * 0.7]);
+    }
+  }
+  // Corner trees (larger)
+  const treeR = cl(m(0.55), m(0.32), Math.min(rw, rh) * 0.22);
+  const trees: [number, number][] = [];
+  if (rw >= m(3.5) && rh >= m(2.0)) {
+    trees.push([rx + rw - treeR - m(0.12), ry + treeR + m(0.12)]);
+  }
+  if (rh >= m(3.0) && rw >= m(2.5)) {
+    trees.push([rx + treeR + m(0.12), ry + rh - treeR - m(0.12)]);
+  }
 
   return (
     <g>
-      {trees.map(([cx, cy], i) => (
-        <Tree key={i} cx={cx} cy={cy} r={treeR} />
+      {/* Shrub clusters along boundaries */}
+      {shrubs.map(([cx, cy], i) => (
+        <ShrubCluster key={`sh${i}`} cx={cx} cy={cy} r={shrubR} />
       ))}
+      {/* Corner trees */}
+      {trees.map(([cx, cy], i) => (
+        <Tree key={`tr${i}`} cx={cx} cy={cy} r={treeR} />
+      ))}
+      {/* Stepping stone pathway — deterministic slight size variation */}
+      {nStones > 0 && Array.from({ length: nStones }).map((_, i) => {
+        const sy = pathStartY + i * ((rh - m(0.4) - stoneH) / Math.max(1, nStones - 1));
+        const vary = [1.0, 0.92, 0.97, 0.94, 0.99][i % 5];
+        const w  = stoneW * vary;
+        const h  = stoneH * (0.92 + (i % 3) * 0.04);
+        return (
+          <rect key={i} x={pathX + (pathW - w)/2} y={sy} width={w} height={h} rx="3"
+            fill={F.step} stroke={F.pathS} strokeWidth={0.5} />
+        );
+      })}
     </g>
   );
 }

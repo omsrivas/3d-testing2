@@ -1,0 +1,107 @@
+The final output must closely match the provided architectural reference image.
+
+Study the reference carefully and replicate:
+
+- Drawing quality
+- Typography
+- Room labels
+- Furniture style
+- Dimension style
+- Plot dimension placement
+- Wall thickness
+- Landscape treatment
+- Car porch style
+- Pathway style
+- North arrow style
+- Information box style
+
+The generated plans should feel like they were produced by a professional architect.
+
+Focus on presentation quality.
+
+Every generated floor plan should look suitable for client delivery and PDF export.
+
+The goal is to achieve a premium architectural presentation similar to professional residential house plan portfolios.
+
+Do not simplify the drawing.
+
+Prioritize realism, clarity and architectural standards.
+
+------------------------------------------------
+
+FURNITURE & FIXTURE DETAILING
+
+Do not use generic placeholder symbols.
+
+Show realistic architectural furniture and fixtures similar to the reference image.
+
+Bedroom:
+- Realistic double beds
+- Side tables
+- Wardrobes
+- Dressing units where applicable
+
+Living Room:
+- Sofa sets
+- Coffee tables
+- TV units
+- Accent chairs
+
+Dining:
+- Dining table
+- Chairs
+
+Kitchen:
+- Countertops
+- Sink
+- Stove/Cooktop
+- Kitchen island where appropriate
+
+Bathrooms:
+- Western toilet seats
+- Wash basins
+- Shower areas
+- Bathroom fixtures
+
+Car Porch:
+- Show a realistic compact sedan or hatchback vehicle similar in scale to the reference image.
+- Do not use oversized or luxury sports cars.
+- Vehicle should feel naturally integrated into the floor plan.
+
+Landscape:
+- Small trees
+- Shrubs
+- Grass
+- Pathway pavers
+- Entry plants
+
+------------------------------------------------
+
+VISUAL DESIGN RULES
+
+- The plan should look premium but not cluttered.
+- The plan should look detailed but not overcomplicated.
+- Maintain visual balance and readability.
+- Use clean spacing.
+- Use realistic furniture proportions.
+- Avoid excessive decoration.
+- Avoid random furniture placement.
+
+The final result should feel:
+
+Premium
+Architect-designed
+Unique
+Client-ready
+Easy to understand
+Professional
+
+not:
+
+Overcrowded
+Confusing
+Cartoonish
+Over-decorated
+Template-looking
+
+Every object should have a purpose and enhance the presentation quality.
