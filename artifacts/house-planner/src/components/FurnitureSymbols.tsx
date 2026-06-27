@@ -1002,34 +1002,130 @@ function ParkingFurniture({ room, ox, oy }: { room: Room; ox:number; oy:number }
 
 // ─── FRONT GARDEN ─────────────────────────────────────────────────────────────
 
+// ─── LANDSCAPE ELEMENTS ───────────────────────────────────────────────────────
+
+/** Full canopy tree in plan view — shadow + layered foliage */
 function Tree({ cx, cy, r }: { cx:number; cy:number; r:number }) {
   return (
     <g>
-      <circle cx={cx + r * 0.12} cy={cy + r * 0.12} r={r}
+      {/* Drop shadow */}
+      <circle cx={cx + r * 0.18} cy={cy + r * 0.18} r={r * 0.92}
         fill="rgba(0,0,0,0.10)" />
+      {/* Outer canopy */}
       <circle cx={cx} cy={cy} r={r}
-        fill={F.treeFill} stroke={F.shrubDark} strokeWidth="0.6" />
-      {/* Inner shadow arc */}
-      <path d={`M ${cx - r*0.55},${cy + r*0.3} A ${r*0.55},${r*0.4} 0 0,1 ${cx + r*0.55},${cy + r*0.3}`}
-        fill={F.treeShadow} />
-      <circle cx={cx - r*0.2} cy={cy - r*0.2} r={r * 0.28}
-        fill="rgba(120,175,85,0.35)" />
+        fill={F.treeFill} stroke={F.shrubDark} strokeWidth="0.55" />
+      {/* Mid canopy highlight */}
+      <circle cx={cx - r * 0.18} cy={cy - r * 0.18} r={r * 0.62}
+        fill="rgba(140,198,95,0.28)" stroke="none" />
+      {/* Dark shadow mass (south-east) */}
+      <path d={`M ${cx},${cy} A ${r},${r} 0 0,1 ${cx + r * 0.7},${cy + r * 0.7}`}
+        fill="rgba(28,78,18,0.14)" />
+      {/* Crown highlight (north-west) */}
+      <circle cx={cx - r * 0.25} cy={cy - r * 0.25} r={r * 0.25}
+        fill="rgba(190,230,140,0.30)" />
+      {/* Trunk dot */}
+      <circle cx={cx} cy={cy} r={Math.max(1.5, r * 0.08)}
+        fill={F.shrubDark} opacity="0.50" />
     </g>
   );
 }
 
+/** Dense rounded shrub cluster */
 function ShrubCluster({ cx, cy, r }: { cx:number; cy:number; r:number }) {
   const pts: [number,number,number][] = [
-    [0, 0, r], [-r*0.52, -r*0.22, r*0.70], [r*0.52, -r*0.22, r*0.70],
-    [-r*0.36, r*0.42, r*0.62], [r*0.38, r*0.44, r*0.64],
+    [0, 0, r],
+    [-r*0.54, -r*0.20, r*0.72],
+    [ r*0.54, -r*0.20, r*0.72],
+    [-r*0.34,  r*0.44, r*0.64],
+    [ r*0.36,  r*0.46, r*0.66],
   ];
   return (
     <g>
+      {/* Shadow */}
+      <circle cx={cx + r*0.14} cy={cy + r*0.14} r={r * 1.02}
+        fill="rgba(0,0,0,0.08)" />
       {pts.map(([dx, dy, cr], i) => (
         <circle key={i} cx={cx + dx} cy={cy + dy} r={cr}
-          fill={F.shrubFill} stroke={F.shrubDark} strokeWidth="0.35" opacity="0.82" />
+          fill={F.shrubFill} stroke={F.shrubDark} strokeWidth="0.35" opacity="0.84" />
       ))}
-      <circle cx={cx} cy={cy} r={r * 0.30} fill={F.shrubDark} opacity="0.16" />
+      {/* Inner dark core */}
+      <circle cx={cx} cy={cy} r={r * 0.28} fill={F.shrubDark} opacity="0.14" />
+    </g>
+  );
+}
+
+/** Small decorative plant / ornamental — tight radiating leaf marks */
+function OrnamentalPlant({ cx, cy, r }: { cx:number; cy:number; r:number }) {
+  const nLeaves = 8;
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={r}
+        fill="rgba(80,148,52,0.30)" stroke="rgba(42,98,28,0.55)" strokeWidth="0.5" />
+      {Array.from({ length: nLeaves }).map((_, i) => {
+        const a = (i * Math.PI * 2) / nLeaves;
+        const lx = cx + Math.cos(a) * r * 0.68;
+        const ly = cy + Math.sin(a) * r * 0.68;
+        return (
+          <line key={i} x1={cx} y1={cy} x2={lx} y2={ly}
+            stroke="rgba(48,112,32,0.55)" strokeWidth="0.6" />
+        );
+      })}
+      <circle cx={cx} cy={cy} r={r * 0.18} fill="rgba(48,112,32,0.65)" />
+    </g>
+  );
+}
+
+/** Garden bed — bordered planting area with ground-cover pattern */
+function GardenBed({
+  x, y, w, h, orientation = "h",
+}: {
+  x:number; y:number; w:number; h:number; orientation?:"h"|"v";
+}) {
+  const bedFill  = "rgba(72,108,48,0.18)";
+  const bedBord  = "rgba(48,88,32,0.50)";
+  const soilFill = "rgba(95,72,42,0.12)";
+
+  // Plant dots inside bed
+  const pts: [number,number,number][] = [];
+  if (orientation === "h") {
+    const cols = Math.max(1, Math.round(w / 14));
+    const rows = Math.max(1, Math.round(h / 10));
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const px2 = x + (c + 0.5) * w / cols;
+        const py2 = y + (r + 0.5) * h / rows;
+        pts.push([px2, py2, Math.min(4.5, w / cols * 0.36)]);
+      }
+    }
+  } else {
+    const cols = Math.max(1, Math.round(w / 10));
+    const rows = Math.max(1, Math.round(h / 14));
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const px2 = x + (c + 0.5) * w / cols;
+        const py2 = y + (r + 0.5) * h / rows;
+        pts.push([px2, py2, Math.min(4.5, h / rows * 0.36)]);
+      }
+    }
+  }
+
+  return (
+    <g>
+      {/* Soil fill */}
+      <rect x={x} y={y} width={w} height={h} fill={soilFill} />
+      {/* Bed fill */}
+      <rect x={x} y={y} width={w} height={h} fill={bedFill} />
+      {/* Edging border */}
+      <rect x={x} y={y} width={w} height={h}
+        fill="none" stroke={bedBord} strokeWidth="0.8" />
+      {/* Edging inner line */}
+      <rect x={x + 2} y={y + 2} width={w - 4} height={h - 4}
+        fill="none" stroke={bedBord} strokeWidth="0.3" />
+      {/* Plant marks */}
+      {pts.map(([px2, py2, r], i) => (
+        <circle key={i} cx={px2} cy={py2} r={r}
+          fill="rgba(62,120,42,0.42)" stroke="rgba(38,88,22,0.38)" strokeWidth="0.3" />
+      ))}
     </g>
   );
 }
@@ -1037,41 +1133,143 @@ function ShrubCluster({ cx, cy, r }: { cx:number; cy:number; r:number }) {
 function FrontGardenElements({ room, ox, oy }: { room: Room; ox:number; oy:number }) {
   const rx = ox + m(room.x), ry = oy + m(room.y);
   const rw = m(room.width),  rh = m(room.depth);
-  const shrubR = cl(m(0.40), m(0.24), Math.min(rw, rh) * 0.17);
-  const treeR  = cl(m(0.52), m(0.30), Math.min(rw, rh) * 0.21);
-  const shrubs: [number,number][] = [];
 
-  const nLeft   = Math.max(1, Math.floor(rh / (shrubR * 2.3)));
-  for (let i = 0; i < nLeft; i++)
-    shrubs.push([rx + shrubR * 0.7, ry + shrubR * 0.8 + i * (rh / nLeft)]);
+  // ── Path dimensions (centred walkway) ──
+  const pathW  = m(0.90);
+  const pathX  = rx + (rw - pathW) / 2;
+  const stoneW = m(0.50);
+  const stoneH = m(0.30);
+  const nSt    = Math.max(2, Math.floor((rh - m(0.5)) / (stoneH + m(0.20))));
 
-  const nBottom = Math.max(1, Math.floor(rw / (shrubR * 2.3)));
-  if (rw >= m(1.8)) for (let i = 0; i < nBottom; i++)
-    shrubs.push([rx + shrubR * 0.8 + i * (rw / nBottom), ry + rh - shrubR * 0.7]);
+  // ── Tree radius ──
+  const treeR  = cl(m(0.54), m(0.30), Math.min(rw, rh) * 0.22);
 
+  // ── Shrub radius ──
+  const shrubR = cl(m(0.32), m(0.18), Math.min(rw, rh) * 0.13);
+
+  // ── Garden beds along the boundary edges ──
+  const bedD = m(0.55);      // bed depth from edge
+  const bedGap = pathW + m(0.12);
+
+  // Left bed (between path and left wall)
+  const lBedW = pathX - rx - m(0.10);
+  const lBedH = rh - m(0.20);
+
+  // Right bed (between path and right wall)
+  const rBedX = pathX + pathW + m(0.05);
+  const rBedW = rx + rw - rBedX - m(0.05);
+  const rBedH = rh - m(0.20);
+
+  // ── Ornamental plants along path edges ──
+  const ornR = m(0.12);
+  const nOrn = Math.max(2, Math.round(rh / m(0.70)));
+
+  // ── Trees ──
   const trees: [number,number][] = [];
-  if (rw >= m(3.2) && rh >= m(1.8)) trees.push([rx + rw - treeR - m(0.12), ry + treeR + m(0.12)]);
-  if (rh >= m(2.8) && rw >= m(2.2)) trees.push([rx + treeR + m(0.12), ry + rh - treeR - m(0.12)]);
+  if (rw >= m(3.5) && rh >= m(2.0)) {
+    trees.push([rx + rw * 0.82, ry + treeR + m(0.15)]);
+  }
+  if (rh >= m(3.0) && rw >= m(3.0)) {
+    trees.push([rx + rw * 0.18, ry + rh - treeR - m(0.18)]);
+  }
+  // Second tree if wide
+  if (rw >= m(5.0) && rh >= m(2.5)) {
+    trees.push([rx + rw * 0.15, ry + treeR + m(0.15)]);
+  }
 
-  // Stepping stone path
-  const pathW = m(0.85), stoneW = m(0.48), stoneH = m(0.32);
-  const nSt   = Math.max(2, Math.floor((rh - m(0.4)) / (stoneH + m(0.22))));
-  const pathX = rx + (rw - pathW) / 2;
+  // ── Shrub clusters along boundary walls ──
+  const shrubs: [number,number][] = [];
+  if (rw >= m(2.5)) {
+    const n = Math.max(2, Math.round(rw / (shrubR * 3.2)));
+    for (let i = 0; i < n; i++) {
+      const sx = rx + (i + 0.5) * rw / n;
+      if (Math.abs(sx - (pathX + pathW / 2)) > pathW * 0.8) {
+        shrubs.push([sx, ry + shrubR + m(0.08)]);
+      }
+    }
+  }
 
   return (
     <g>
-      {shrubs.map(([cx, cy], i) => <ShrubCluster key={`sh${i}`} cx={cx} cy={cy} r={shrubR} />)}
-      {trees.map(([cx, cy], i)  => <Tree key={`tr${i}`} cx={cx} cy={cy} r={treeR} />)}
+      {/* ── Garden beds ── */}
+      {lBedW > m(0.4) && lBedH > m(0.4) && (
+        <GardenBed
+          x={rx + m(0.05)} y={ry + m(0.10)}
+          w={lBedW} h={lBedH}
+          orientation="v"
+        />
+      )}
+      {rBedW > m(0.4) && rBedH > m(0.4) && (
+        <GardenBed
+          x={rBedX} y={ry + m(0.10)}
+          w={rBedW} h={rBedH}
+          orientation="v"
+        />
+      )}
+
+      {/* ── Entry pathway (cut stone) ── */}
       {Array.from({ length: nSt }).map((_, i) => {
-        const sy = ry + m(0.28) + i * ((rh - m(0.4) - stoneH) / Math.max(1, nSt - 1));
-        const vary = [1.0, 0.93, 0.97, 0.95, 0.99][i % 5];
+        const sy = ry + m(0.28) + i * ((rh - m(0.50) - stoneH) / Math.max(1, nSt - 1));
+        const scale = [1.00, 0.93, 0.97, 0.94, 0.98][i % 5];
+        const sw = stoneW * scale;
+        const sh = stoneH * (0.88 + (i % 3) * 0.06);
         return (
-          <rect key={i}
-            x={pathX + (pathW - stoneW * vary) / 2} y={sy}
-            width={stoneW * vary} height={stoneH}
-            fill={F.stoneFill} stroke={F.stoneStroke} strokeWidth="0.5" rx="3" />
+          <g key={i}>
+            {/* Stone shadow */}
+            <rect x={pathX + (pathW - sw) / 2 + 1} y={sy + 1} width={sw} height={sh}
+              fill="rgba(0,0,0,0.08)" rx="2.5" />
+            {/* Stone */}
+            <rect x={pathX + (pathW - sw) / 2} y={sy} width={sw} height={sh}
+              fill={F.stoneFill} stroke={F.stoneStroke} strokeWidth="0.55" rx="2.5" />
+            {/* Surface detail crack */}
+            <line
+              x1={pathX + (pathW - sw) / 2 + sw * 0.30} y1={sy + sh * 0.45}
+              x2={pathX + (pathW - sw) / 2 + sw * 0.70} y2={sy + sh * 0.55}
+              stroke={F.stoneStroke} strokeWidth="0.25" opacity="0.45" />
+          </g>
         );
       })}
+
+      {/* ── Path edge ornamental plants ── */}
+      {Array.from({ length: nOrn }).map((_, i) => {
+        const py = ry + m(0.30) + i * (rh - m(0.60)) / Math.max(1, nOrn - 1);
+        return (
+          <g key={`orn${i}`}>
+            {/* Left of path */}
+            {lBedW > m(0.5) && (
+              <OrnamentalPlant
+                cx={pathX - m(0.20)}
+                cy={py}
+                r={ornR} />
+            )}
+            {/* Right of path */}
+            {rBedW > m(0.5) && (
+              <OrnamentalPlant
+                cx={pathX + pathW + m(0.20)}
+                cy={py}
+                r={ornR} />
+            )}
+          </g>
+        );
+      })}
+
+      {/* ── Trees ── */}
+      {trees.map(([cx, cy], i) => (
+        <Tree key={`tr${i}`} cx={cx} cy={cy} r={treeR} />
+      ))}
+
+      {/* ── Boundary shrubs (top edge, flanking gate) ── */}
+      {shrubs.map(([cx, cy], i) => (
+        <ShrubCluster key={`sh${i}`} cx={cx} cy={cy} r={shrubR} />
+      ))}
+
+      {/* ── Corner accent plants ── */}
+      {rw >= m(2.5) && rh >= m(1.5) && (
+        <>
+          <OrnamentalPlant cx={rx + m(0.32)} cy={ry + m(0.32)} r={m(0.16)} />
+          <OrnamentalPlant cx={rx + rw - m(0.32)} cy={ry + m(0.32)} r={m(0.16)} />
+        </>
+      )}
     </g>
   );
 }
