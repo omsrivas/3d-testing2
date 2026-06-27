@@ -3,6 +3,7 @@ import type {
   LayoutOutput, Room, Wall, Door,
   Window as WinType, Stair, FacingDirection,
 } from "@/lib/layoutEngine";
+import { RoomFurniture } from "./FurnitureSymbols";
 
 // ─── Drawing constants ────────────────────────────────────────────────────────
 export const BASE_SCALE = 45;   // px per metre
@@ -48,26 +49,26 @@ const C = {
   hatch:      "rgba(60,110,60,0.22)",
 } as const;
 
-// Professional near-white room fills
+// Professional architectural room fills — warm, desaturated, marketing-quality
 const ROOM_FILLS: Record<string, string> = {
-  living:         "#FAFAF7",
-  family_lounge:  "#F7FAF7",
-  dining:         "#F8FCF8",
-  kitchen:        "#FFFDF0",
-  master_bedroom: "#F8F5FC",
-  bedroom:        "#F5F8FD",
-  bathroom:       "#EDF6FD",
-  toilet:         "#EDF6FD",
-  balcony:        "#F0F8F0",
-  parking:        "#F0F2EE",
-  staircase:      "#F5F3EE",
-  foyer:          "#FDFCF7",
-  pooja:          "#FDF7EE",
-  utility:        "#F6F6F3",
-  passage:        "#FAFAFA",
-  front_garden:   "#EDF5E8",
-  entrance_gate:  "#E8EDE6",
-  terrace:        "#F2F5F0",
+  living:         "#F2EDE3",
+  family_lounge:  "#EEF0E8",
+  dining:         "#EBF0E6",
+  kitchen:        "#FDF8E8",
+  master_bedroom: "#EDE8F5",
+  bedroom:        "#E8EEF8",
+  bathroom:       "#DFF0F8",
+  toilet:         "#DFF0F8",
+  balcony:        "#DFF0E5",
+  parking:        "#EAECEA",
+  staircase:      "#EDE9E2",
+  foyer:          "#F5F0E2",
+  pooja:          "#FBF2E0",
+  utility:        "#F0EEE8",
+  passage:        "#F5F3EE",
+  front_garden:   "#D8EDCE",
+  entrance_gate:  "#DDE4D4",
+  terrace:        "#E5EDE0",
 };
 
 const ROOM_LABELS: Record<string, string> = {
@@ -641,9 +642,17 @@ const FloorPlanSVG = forwardRef<SVGSVGElement, FloorPlanSVGProps>(
           <BalconyHatch key={`hatch-${r.id}`} room={r} ox={OX} oy={OY} />
         ))}
 
-        {/* ⑦ Plot outline */}
+        {/* ⑥b Furniture & exterior elements */}
+        {rooms.map(r => (
+          <RoomFurniture key={`furn-${r.id}`} room={r} ox={OX} oy={OY} />
+        ))}
+
+        {/* ⑦ Exterior boundary wall (thick outer ring) */}
         <rect x={OX} y={OY} width={pw} height={pd}
-          fill="none" stroke={C.border} strokeWidth="0.5" />
+          fill="none" stroke={C.border} strokeWidth="3.5" />
+        {/* Inner boundary wall face */}
+        <rect x={OX + 3.5} y={OY + 3.5} width={pw - 7} height={pd - 7}
+          fill="none" stroke="rgba(0,0,0,0.12)" strokeWidth="1" />
 
         {/* ⑧ Walls (solid filled rectangles) */}
         {walls.map(w => (

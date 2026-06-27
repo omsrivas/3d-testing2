@@ -3,3 +3,4 @@
 - [Workflow routing](workflow-routing.md) — runButton="Project" in .replit delegates to "House Planner" (shell.exec); Replit internal iframe preview works even if external sisko dev domain gives 502.
 - [Multi-floor staircase room placement](multi-floor-staircase.md) — staircase rooms must be manually placed at the reserved footprint on EVERY floor in planAllFloors; filtering them from specs and only blocking space causes generateStairs to find no rooms and zero stair/wall geometry on upper floors.
 - [Indian layout engine design](indian-layout-engine.md) — zone-based two-depth stair model, boundary arithmetic, and gap-filling rules for the realistic Indian residential layout engine.
+- [Furniture & exterior symbols](furniture-symbols.md) — FurnitureSymbols.tsx adds plan-view furniture per room type; car orient along longer axis; auto-generate on mount added to HousePlannerPage.tsx.

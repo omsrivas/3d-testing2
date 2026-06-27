@@ -453,7 +453,8 @@ export default function HousePlannerPage() {
     }, 30);
   }, [input]);
 
-  // No auto-generate — user must click GENERATE PLAN
+  // Auto-generate on first mount for preview
+  useEffect(() => { generate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Zoom wheel handler (zoom toward cursor)
   const onWheel = useCallback((e: React.WheelEvent) => {
