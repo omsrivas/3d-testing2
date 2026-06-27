@@ -1,6 +1,4 @@
-- [React 19 + react-konva compat](react19-konva.md) — react-konva v18 bundles its own reconciler that crashes with React 19; upgrade to react-konva v19 instead of shimming.
+- [2D-only rebuild](2d-rebuild.md) — all 3D/Konva/furniture removed; app is now pure SVG 2D floor plan renderer with zoom/pan/export.
+- [Vite port config](vite-port.md) — vite.config.ts defaults to PORT=3000 when env var missing; workflow "House Planner" uses waitForPort=3000.
+- [Workflow routing](workflow-routing.md) — runButton="Project" in .replit delegates to "House Planner" (shell.exec); Replit internal iframe preview works even if external sisko dev domain gives 502.
 - [Multi-floor staircase room placement](multi-floor-staircase.md) — staircase rooms must be manually placed at the reserved footprint on EVERY floor in planAllFloors; filtering them from specs and only blocking space causes generateStairs to find no rooms and zero stair/wall geometry on upper floors.
-- [React 19 + R3F v8 shim](r3f-react19-shim.md) — R3F v8 reconciler reads __SECRET_INTERNALS that React 19 may not provide; shim must create the object and all needed stubs before R3F lazy-loads.
-- [PBR materials approach](pbr-materials.md) — procedural CanvasTexture textures created outside R3F Canvas and passed as props; Environment preset="apartment" for reflections.
-- [Postprocessing + lighting](postprocessing-lighting.md) — N8AO v2.16 with R3F v8; enableNormalPass={false} not disableNormalPass
-- [3D rendering optimizations](render-optimizations.md) — InstancedMesh per (role, floor), module-level texture singleton, lazy furniture, LOD trees, mobile quality scaling.
